@@ -1,0 +1,78 @@
+---
+title: "twilio-ruby changelog and version history"
+description: "Notable changes and release history for twilio-ruby — version highlights, deprecations, and links to full release notes on GitHub."
+---
+
+`twilio-ruby` maintains a detailed changelog in `CHANGES.md` at the root of the repository. Every release — including patch releases — is listed there with a description of what changed across Twilio product areas. This page summarises the major milestones by version family and links you to the full release history so you can review the exact changes that affect your integration.
+
+## Full release history
+
+The authoritative release history lives in two places:
+
+- **[CHANGES.md](https://github.com/twilio/twilio-ruby/blob/main/CHANGES.md)** — every release entry with per-product change details, going back to the earliest 5.x versions.
+- **[GitHub Releases](https://github.com/twilio/twilio-ruby/releases)** — tagged releases with downloadable source archives.
+
+<Tip>
+  If you are auditing a specific dependency upgrade, search `CHANGES.md` for the version numbers you are moving between. Each entry lists the Twilio product area (API, Twiml, Insights, etc.) alongside the individual changes.
+</Tip>
+
+---
+
+## Version highlights
+
+### v7 — OpenAPI-generated, JSON content type support
+
+Version 7.0.0 (released 2024-01-19) marked the second generation of the auto-generated library. Key milestones in the 7.x line include:
+
+- The library is fully **auto-generated from Twilio's OpenAPI specification**, enabling faster delivery of new API products and parameters.
+- **`application/json` request body support** was added, alongside the existing `application/x-www-form-urlencoded` default.
+- Continued expansion of product coverage: new endpoints were added in the 7.x series for areas including ConversationRelay, Data Ingress, Insights Domains, MCP, and Memory.
+- The 7.x series is the **only supported major version**. Bug fixes, security patches, and new features are only added here.
+
+### v6 — First OpenAPI-generated release
+
+Version 6.0.0 (released 2023-05-03) was the first release built from Twilio's OpenAPI specification. The transition was designed to be a drop-in upgrade from 5.x with no breaking changes. The primary benefit was a consistent code generation pipeline shared across all Twilio helper libraries.
+
+### v5 — Handcrafted library, long-term stability
+
+The 5.x series was the previous long-lived major version, covering releases from 2017 through 2023. Notable milestones within 5.x included:
+
+- **5.3.x (2017-09-29):** The `body` parameter on Chat Message creation was made optional to support media messages. This was the only code-level breaking change within the 5.x line. See the [upgrade guide](/migration/upgrading) for before/after examples.
+- The 5.x series introduced the current resource-oriented API style (`@client.messages.create(...)`) that has been carried forward into 6.x and 7.x.
+
+<Note>
+  Only the current major version (v7) receives new features, bug fixes, and security updates. If you are still on v5 or v6, plan an upgrade to v7. See the [upgrade guide](/migration/upgrading) for details — both migrations are drop-in with no breaking changes.
+</Note>
+
+---
+
+## Supported Ruby versions
+
+The `twilio-ruby` gemspec requires Ruby `>= 2.0.0`. The versions actively tested in CI and recommended for production use are:
+
+| Implementation | Supported versions             |
+| -------------- | ------------------------------ |
+| MRI Ruby       | 2.4, 2.5, 2.6, 2.7, 3.0, 3.1, 3.2 |
+| JRuby          | 9.2, 9.3, 9.4                  |
+
+As the library moves through major versions, older Ruby versions that have reached end-of-life are removed from the CI matrix. Check the `.github/workflows` directory in the repository for the current test matrix.
+
+---
+
+## Versioning policy
+
+`twilio-ruby` uses a modified form of [Semantic Versioning](https://semver.org):
+
+- **PATCH** — backwards-compatible bug fixes and small feature additions. Always safe to apply.
+- **MINOR** — new features or limited backwards-incompatible changes. May require small code updates; documented in [`UPGRADE.md`](https://github.com/twilio/twilio-ruby/blob/main/UPGRADE.md).
+- **MAJOR** — significant changes or a new library generation. Documented in advance with Release Candidates. All major upgrades since 5.x have been designed as drop-in replacements.
+
+Only the current `MAJOR` version is supported at any given time.
+
+<Tip>
+  Pin at least the major version in your `Gemfile` to avoid accidentally pulling in a major version bump. A constraint like `~> 7.0` allows all 7.x patch and minor updates while blocking a jump to 8.x.
+
+  ```ruby
+  gem 'twilio-ruby', '~> 7.0'
+  ```
+</Tip>

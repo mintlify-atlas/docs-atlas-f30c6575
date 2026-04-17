@@ -1,0 +1,132 @@
+---
+title: "Upgrade twilio-ruby to the latest version"
+description: "Step-by-step upgrade guide for twilio-ruby — covering breaking changes from 5.x to 6.x and 6.x to 7.x with before/after code examples."
+---
+
+`twilio-ruby` follows a modified semantic versioning strategy where `MAJOR` bumps signal significant changes, `MINOR` bumps may introduce limited backwards-incompatible tweaks, and `PATCH` bumps are always safe to apply. Most major version upgrades have been designed to be drop-in replacements, but this guide covers every migration point that has been documented since 5.0.0 so you know exactly what to expect before updating your version pin.
+
+## Update your Gemfile
+
+Before upgrading, update the version constraint in your `Gemfile`. The pessimistic constraint (`~>`) lets Bundler pull in patch releases automatically while preventing unexpected minor or major version bumps:
+
+```ruby
+gem 'twilio-ruby', '~> 7.0'
+```
+
+Then run:
+
+```bash
+bundle update twilio-ruby
+```
+
+<Tip>
+  Pin to a specific patch version (e.g., `~> 7.10.5`) in production environments where you want full control over when updates are applied. Use a minor-level pin (e.g., `~> 7.0`) in environments where you want patch and minor updates picked up automatically.
+</Tip>
+
+---
+
+## 6.x to 7.x
+
+Released 2024-01-19. Version 7.0.0 is a drop-in upgrade — no changes to existing API call signatures are required.
+
+### What changed
+
+- The library is now **auto-generated via OpenAPI**. This means new Twilio API products and parameters are added faster, with consistent naming and structure across all Twilio helper libraries.
+- Version 7.0.0 adds **support for `application/json` as a request body content type**. Previously, all request bodies were sent as `application/x-www-form-urlencoded`. JSON content type support is additive and does not affect existing code.
+
+<Note>
+  Twilio guarantees no breaking changes when moving from 6.x to 7.x. Your existing method calls, resource paths, and response handling code will continue to work without modification.
+</Note>
+
+### Upgrade steps
+
+<Steps>
+  <Step title="Update the version pin in your Gemfile">
+    Change your version constraint to target the 7.x series:
+
+    ```ruby
+    gem 'twilio-ruby', '~> 7.0'
+    ```
+  </Step>
+  <Step title="Run bundle update">
+    Fetch and lock the new version:
+
+    ```bash
+    bundle update twilio-ruby
+    ```
+  </Step>
+  <Step title="Run your test suite">
+    No code changes are required, but running your tests confirms that the upgrade has not introduced any unexpected behaviour in your specific environment.
+  </Step>
+</Steps>
+
+---
+
+## 5.x to 6.x
+
+Released 2023-05-03. Version 6.0.0 is also a drop-in upgrade — no breaking changes to existing API call signatures.
+
+### What changed
+
+- The library was first transitioned to **auto-generation via OpenAPI** in this release. The change enables Twilio to rapidly add new features and enforce consistency across versions and languages.
+
+<Note>
+  Twilio guarantees no breaking changes when moving from 5.x to 6.x. Existing code continues to work without modification.
+</Note>
+
+### Upgrade steps
+
+<Steps>
+  <Step title="Update the version pin in your Gemfile">
+    ```ruby
+    gem 'twilio-ruby', '~> 6.0'
+    ```
+  </Step>
+  <Step title="Run bundle update">
+    ```bash
+    bundle update twilio-ruby
+    ```
+  </Step>
+</Steps>
+
+---
+
+## 5.x to 5.3.x
+
+Released 2017-09-29. This is the one migration within the 5.x line that requires a code change if you create Chat messages.
+
+### Body parameter on Chat Message creation is no longer required
+
+The `body` parameter was made optional on Chat `Message` creation to support sending media messages. Users can now provide either a `body` or a `media_sid`. As part of this change, the positional argument order was updated.
+
+#### Before (5.x)
+
+The `body` was passed as the first positional argument, followed by `from`:
+
+```ruby
+require 'twilio-ruby'
+
+@client = Twilio::REST::Client.new "AC123", "auth"
+@client.chat.v2.service('IS123').channel('CH123').message.create("this is the body", "from")
+```
+
+#### After (5.3.x)
+
+`from` is now the first positional argument, and `body` is passed as a keyword argument:
+
+```ruby
+require 'twilio-ruby'
+
+@client = Twilio::REST::Client.new "AC123", "auth"
+@client.chat.v2.service('IS123').channel('CH123').message.create("from", body: "this is the body")
+```
+
+<Warning>
+  If you call `message.create` with two positional string arguments in 5.3.x, the first argument will be interpreted as `from` and the second will be ignored rather than used as the body. Update all Chat Message creation calls before upgrading to 5.3.x.
+</Warning>
+
+To send a media message instead of a text body, pass `media_sid` in place of `body`:
+
+```ruby
+@client.chat.v2.service('IS123').channel('CH123').message.create("from", media_sid: "ME123")
+```

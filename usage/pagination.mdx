@@ -1,0 +1,119 @@
+---
+title: "Paginating Twilio API results in Ruby"
+description: "Use twilio-ruby's list, stream, and page methods to retrieve large Twilio collections — with limit, page_size, and lazy enumeration via RecordStream."
+---
+
+Twilio API collections—messages, calls, recordings, and others—can contain thousands of records. The `twilio-ruby` library provides three methods to work with these collections: `list` for eager loading, `stream` for lazy iteration, and `page` for manual cursor-based access. All three accept `limit` and `page_size` parameters to control how many records are fetched and how large each underlying HTTP request is.
+
+## `list` — eager fetch all records
+
+`list` makes as many API requests as needed to collect every matching record up to `limit`, then returns them as a Ruby `Array`. Use it when you need the full result set in memory at once and the collection is small enough that loading everything upfront is acceptable.
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+
+# Fetch up to 50 messages, 20 records per page
+messages = client.messages.list(limit: 50, page_size: 20)
+
+messages.each do |message|
+  puts "#{message.sid}: #{message.status}"
+end
+```
+
+```ruby
+# Fetch recent calls
+calls = client.calls.list(limit: 20)
+
+calls.each do |call|
+  puts call.direction
+end
+```
+
+<Note>
+When `limit` is set and no `page_size` is given, the library uses `limit` as the page size so it fetches everything in a single request when possible.
+</Note>
+
+| Parameter   | Description                                                       |
+| ----------- | ----------------------------------------------------------------- |
+| `limit`     | Maximum number of records to return across all pages              |
+| `page_size` | Number of records per API request (default decided by the API)    |
+
+## `stream` — lazy iteration with an Enumerator
+
+`stream` returns a `RecordStream` that implements `Enumerable`. Records are fetched one page at a time as you iterate, so memory usage stays low even when processing very large collections. The next page is only requested once all records on the current page have been yielded.
+
+```ruby
+# Stream all messages and process each one
+client.messages.stream(limit: 1000).each do |message|
+  puts message.body
+end
+```
+
+```ruby
+# Stream calls and stop early using Enumerable methods
+client.calls.stream(limit: 500)
+             .lazy
+             .select { |call| call.direction == 'inbound' }
+             .first(10)
+             .each { |call| puts call.sid }
+```
+
+<Tip>
+Prefer `stream` over `list` when dealing with large collections or when you do not need all records in memory at the same time. It reduces both memory allocation and time-to-first-record.
+</Tip>
+
+## `page` — manual pagination
+
+`page` gives you direct control over cursor-based navigation. It returns a `Page` object containing a slice of records along with `next_page` and `previous_page` methods that fetch adjacent pages on demand.
+
+```ruby
+# Fetch the first page of messages
+page = client.messages.page(page_size: 20)
+
+# Process the current page
+page.each do |message|
+  puts message.sid
+end
+
+# Fetch the next page
+next_page = page.next_page
+
+if next_page
+  next_page.each do |message|
+    puts message.sid
+  end
+end
+```
+
+The `Page` object exposes:
+
+| Method              | Description                                              |
+| ------------------- | -------------------------------------------------------- |
+| `each`              | Iterate over records on the current page                 |
+| `next_page`         | Fetch and return the next `Page`, or `nil` if at the end |
+| `previous_page`     | Fetch and return the previous `Page`, or `nil`           |
+| `next_page_url`     | URL string for the next page                             |
+| `previous_page_url` | URL string for the previous page                         |
+
+<Warning>
+`page` raises `Twilio::REST::RestError` if the API responds with a non-200 status. Wrap manual pagination in a rescue block if the request can fail.
+</Warning>
+
+## Choosing the right method
+
+<CardGroup cols={3}>
+  <Card title="list" icon="layer-group">
+    **Use when:** you need the full result set as an array and the collection is small (hundreds of records or fewer).
+  </Card>
+  <Card title="stream" icon="arrow-right">
+    **Use when:** the collection may be large, you want lazy loading, or you plan to stop iterating early.
+  </Card>
+  <Card title="page" icon="file">
+    **Use when:** you need explicit control over pagination—for example, to implement a paginated UI or to resume from a saved cursor.
+  </Card>
+</CardGroup>

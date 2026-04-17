@@ -1,0 +1,176 @@
+---
+title: "Making API requests with twilio-ruby"
+description: "How to create, fetch, update, and delete Twilio resources using twilio-ruby — covers the CRUD pattern, debug logging, and inspecting raw HTTP responses."
+---
+
+Once you have an authenticated client, every Twilio resource follows the same create / fetch / update / delete pattern. The `Twilio::REST::Client` exposes shortcut accessors for each resource collection—`client.messages`, `client.calls`, `client.incoming_phone_numbers`, and many more—so you rarely need to traverse the full domain hierarchy by hand. Each operation returns a typed instance object whose properties map directly to the API response fields.
+
+## Create a resource
+
+Use `.create` with keyword arguments that match the resource's API parameters. The call blocks until the API responds and returns an instance of the resource.
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+
+# Send an SMS
+message = client.messages.create(
+  from: '+14159341234',
+  to:   '+16105557069',
+  body: 'Hey there!'
+)
+
+puts message.sid
+```
+
+```ruby
+# Make an outbound call
+call = client.calls.create(
+  from: '+14159341234',
+  to:   '+16105557069',
+  url:  'http://example.com/twiml'
+)
+
+puts call.sid
+```
+
+## Fetch a single resource
+
+Pass the resource SID into the collection method to get a context, then call `.fetch` to retrieve the full resource.
+
+```ruby
+message_sid = 'SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+message = client.messages(message_sid).fetch
+
+puts message.body
+puts message.status
+```
+
+## Update a resource
+
+Call `.update` on a resource context with the fields you want to change.
+
+```ruby
+# Cancel a queued call
+client.calls('CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').update(status: 'canceled')
+
+# Update a phone number's voice URL
+client.incoming_phone_numbers('PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').update(
+  voice_url: 'https://example.com/voice'
+)
+```
+
+## Delete a resource
+
+Call `.delete` on a resource context. It returns `true` on success.
+
+```ruby
+deleted = client.incoming_phone_numbers('PNxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').delete
+puts deleted # => true
+```
+
+## Accessing resource properties
+
+Every instance returned by `create`, `fetch`, or `update` exposes the API response fields as methods. Property names use `snake_case` and mirror the JSON keys in the REST API response.
+
+```ruby
+message = client.messages('SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').fetch
+
+puts message.sid          # SM...
+puts message.status       # delivered
+puts message.date_sent    # 2024-03-15 10:30:00 UTC
+puts message.body         # Hey there!
+puts message.direction    # outbound-api
+```
+
+## Shortcut methods on the client
+
+`Twilio::REST::Client` provides direct accessors for all common API v2010 resources so you don't need to go through `client.api.v2010.account.*`:
+
+<CardGroup cols={2}>
+  <Card title="client.messages" icon="envelope">
+    SMS and MMS messages
+  </Card>
+  <Card title="client.calls" icon="phone">
+    Voice calls
+  </Card>
+  <Card title="client.incoming_phone_numbers" icon="hashtag">
+    Purchased phone numbers
+  </Card>
+  <Card title="client.conferences" icon="users">
+    Conference resources
+  </Card>
+  <Card title="client.recordings" icon="circle-dot">
+    Call and conference recordings
+  </Card>
+  <Card title="client.queues" icon="list">
+    Call queues
+  </Card>
+</CardGroup>
+
+Each of these accepts an optional SID. With no argument it returns a list resource; with a SID it returns a context you can call `.fetch`, `.update`, or `.delete` on.
+
+```ruby
+# List resource — supports list, stream, page
+client.messages
+
+# Context — supports fetch, update, delete
+client.messages('SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')
+```
+
+## Debug logging
+
+To inspect the full request and response cycle, attach a `Logger` set to `DEBUG` level. The client will print headers, the request path, query parameters, and the response status code to wherever the logger writes.
+
+```ruby
+require 'logger'
+
+client = Twilio::REST::Client.new(account_sid, auth_token)
+
+logger       = Logger.new(STDOUT)
+logger.level = Logger::DEBUG
+
+client.logger = logger
+```
+
+To write logs to a file instead:
+
+```ruby
+logger       = Logger.new('twilio_debug.log')
+logger.level = Logger::DEBUG
+
+client.logger = logger
+```
+
+<Note>
+Authorization headers are intentionally omitted from debug output to avoid leaking credentials in logs.
+</Note>
+
+## Inspecting the last HTTP response
+
+The underlying HTTP client keeps a reference to the most recent response. You can read the status code directly after any request:
+
+```ruby
+message = client.messages.create(
+  to:   '+14158675309',
+  from: '+14258675310',
+  body: 'Ahoy!'
+)
+
+puts client.http_client.last_response.status_code  # => 201
+```
+
+This is useful when you need the raw HTTP status alongside the parsed resource data, for example in integration tests or observability hooks.
+
+<CardGroup cols={2}>
+  <Card title="Pagination" icon="table-list" href="/usage/pagination">
+    Retrieve large collections with list, stream, and page.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/usage/error-handling">
+    Catch and recover from API errors.
+  </Card>
+</CardGroup>

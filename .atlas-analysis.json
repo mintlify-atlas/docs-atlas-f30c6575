@@ -1,23 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "twilio-ruby",
+  "projectType": "sdk-library",
+  "projectName": "twilio-ruby",
+  "projectDescription": "Official Ruby gem for communicating with the Twilio REST API, generating TwiML, and creating JWT tokens for Twilio services.",
   "theme": "luma",
-  "colors": {
-    "primary": "#94cb04",
-    "light": "#545454"
-  },
-  "favicon": "/favicon.svg",
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/twilio/twilio-ruby"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/twilio/twilio-ruby"
-    }
-  },
+  "primaryColor": "#94cb04",
+  "lightColor": "#545454",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -106,5 +94,33 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Full Twilio REST API coverage via auto-generated client",
+    "TwiML generation for Voice, Messaging, and Fax",
+    "JWT token generation (AccessToken, ClientCapability, TaskRouter)",
+    "Webhook request validation with Rack middleware support",
+    "Automatic pagination for list resources",
+    "Customizable HTTP client via Faraday adapters",
+    "Support for Twilio Global Infrastructure (region/edge routing)",
+    "OAuth 2.0 Client Credentials Flow support"
+  ],
+  "publicApiSurface": [
+    "Twilio::REST::Client",
+    "Twilio::TwiML::VoiceResponse",
+    "Twilio::TwiML::MessagingResponse",
+    "Twilio::TwiML::FaxResponse",
+    "Twilio::JWT::AccessToken",
+    "Twilio::JWT::ClientCapability",
+    "Twilio::JWT::TaskRouterCapability",
+    "Twilio::Security::RequestValidator",
+    "Rack::TwilioWebhookAuthentication",
+    "Twilio.configure",
+    "client.messages.create",
+    "client.calls.create",
+    "client.verify",
+    "client.video",
+    "client.conversations",
+    "client.taskrouter"
+  ]
 }

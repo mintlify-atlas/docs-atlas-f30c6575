@@ -1,0 +1,132 @@
+---
+title: "Phone verification with Twilio Verify"
+description: "Send one-time passcodes via SMS, voice, or WhatsApp and verify user-submitted codes using twilio-ruby and the Twilio Verify v2 API."
+---
+
+Twilio Verify handles OTP delivery and validation across SMS, voice call, WhatsApp, and email channels. The API is organized around a Verify Service that stores your configuration (code length, channel defaults, branding). All calls are scoped to a Service SID.
+
+## Prerequisites
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+You need a Verify Service SID. Store it as an environment variable:
+
+```ruby
+service_sid = ENV['TWILIO_VERIFY_SERVICE_SID'] # VA...
+```
+
+<Note>
+  Create a Verify Service in the [Twilio Console](https://console.twilio.com/us1/develop/verify/services) or via the API (see below). You cannot send verifications without one.
+</Note>
+
+## Create a Verify service
+
+If you do not already have a service, create one programmatically:
+
+```ruby
+service = client.verify.v2.services.create(
+  friendly_name: 'My App Verification'
+)
+
+puts service.sid          # VA...
+puts service.friendly_name
+puts service.code_length  # default is 6
+```
+
+Store `service.sid` as your `TWILIO_VERIFY_SERVICE_SID`.
+
+## Send a verification code
+
+Call `verifications.create` with the destination phone number (E.164 format) and the desired channel.
+
+```ruby
+verification = client.verify.v2
+                     .services(service_sid)
+                     .verifications
+                     .create(
+                       to:      '+16105557069',
+                       channel: 'sms'
+                     )
+
+puts verification.sid    # VE...
+puts verification.status # pending
+```
+
+Supported channel values: `sms`, `call`, `whatsapp`, `email`, `auto`.
+
+<Tip>
+  Use `channel: 'auto'` to let Twilio choose the fastest available channel for the destination number.
+</Tip>
+
+## Check a verification code
+
+After the user submits the code from their device, call `verification_checks.create`:
+
+```ruby
+check = client.verify.v2
+              .services(service_sid)
+              .verification_checks
+              .create(
+                to:   '+16105557069',
+                code: '123456'
+              )
+
+puts check.status # approved or pending
+```
+
+Alternatively, identify the verification by SID instead of phone number:
+
+```ruby
+check = client.verify.v2
+              .services(service_sid)
+              .verification_checks
+              .create(
+                verification_sid: 'VExxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+                code:             '123456'
+              )
+```
+
+## Handle verification status
+
+The `status` field tells you the outcome:
+
+```ruby
+case check.status
+when 'approved'
+  puts 'Phone number verified. Grant access.'
+when 'pending'
+  puts 'Incorrect code. Ask the user to try again.'
+when 'canceled'
+  puts 'Verification expired or was canceled.'
+end
+```
+
+<Warning>
+  A verification is marked `approved` only once. Checking the same code a second time returns `pending`. Build your application so that you record verified status on first approval.
+</Warning>
+
+## Error handling
+
+```ruby
+begin
+  client.verify.v2
+        .services(service_sid)
+        .verifications
+        .create(to: '+16105557069', channel: 'sms')
+rescue Twilio::REST::RestError => e
+  puts e.message
+  puts e.code   # e.g. 60200 for invalid parameter
+end
+```
+
+Common error codes:
+- `60200` — Invalid parameter (malformed number, unsupported channel)
+- `60202` — Max verification attempts reached for this number
+- `60203` — Rate limit exceeded

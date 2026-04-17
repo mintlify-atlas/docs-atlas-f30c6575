@@ -1,0 +1,286 @@
+---
+title: "Conversations REST API reference"
+description: "Reference for client.conversations in twilio-ruby — manage conversation threads, participants, and messages across SMS, chat, and WhatsApp."
+---
+
+The Twilio Conversations API provides a unified messaging layer across SMS, WhatsApp, and chat (SDK) channels. A Conversation is a thread that holds messages and participants. Participants can be added as either identity-based (chat SDK) or messaging-binding-based (SMS/WhatsApp). `client.conversations.v1.conversations` is the entry point in twilio-ruby.
+
+## conversations.create
+
+Create a new Conversation thread.
+
+```ruby
+conversation = client.conversations.v1.conversations.create(
+  friendly_name: 'Support Ticket #12345'
+)
+
+puts conversation.sid          # => "CHxxx"
+puts conversation.friendly_name # => "Support Ticket #12345"
+```
+
+### Parameters
+
+<ParamField path="friendly_name" type="string">
+  A human-readable name for the conversation, up to 256 characters.
+</ParamField>
+
+<ParamField path="unique_name" type="string">
+  An application-defined string that uniquely identifies the conversation. Can be used in place of the SID in URLs.
+</ParamField>
+
+<ParamField path="messaging_service_sid" type="string">
+  SID of the Messaging Service this conversation belongs to. Determines which phone numbers and channels are available for the conversation.
+</ParamField>
+
+<ParamField path="attributes" type="string">
+  A JSON string for storing arbitrary metadata on the conversation. Must be valid JSON when provided.
+</ParamField>
+
+<ParamField path="state" type="string">
+  Initial state of the conversation. Values: `active`, `inactive`, `closed`.
+</ParamField>
+
+<ParamField path="timers_inactive" type="string">
+  ISO 8601 duration after which an active conversation transitions to `inactive`. Minimum: 1 minute.
+</ParamField>
+
+<ParamField path="timers_closed" type="string">
+  ISO 8601 duration after which an inactive conversation transitions to `closed`. Minimum: 10 minutes.
+</ParamField>
+
+<ParamField path="bindings_email_address" type="string">
+  Default sender email address for outbound emails in this conversation.
+</ParamField>
+
+<ParamField path="bindings_email_name" type="string">
+  Default sender display name for outbound emails in this conversation.
+</ParamField>
+
+---
+
+## participants.create
+
+Add a participant to a conversation. Participants are either identity-based (using the Conversations SDK) or messaging-binding-based (SMS or WhatsApp). You use one approach per participant — not both.
+
+**Chat (SDK) participant:**
+
+```ruby
+client.conversations.v1
+  .conversations('CHxxx')
+  .participants
+  .create(identity: 'user-alice')
+```
+
+**SMS participant:**
+
+```ruby
+client.conversations.v1
+  .conversations('CHxxx')
+  .participants
+  .create(
+    messaging_binding_address:       '+15558675309',
+    messaging_binding_proxy_address: '+15017122661'
+  )
+```
+
+**WhatsApp participant:**
+
+```ruby
+client.conversations.v1
+  .conversations('CHxxx')
+  .participants
+  .create(
+    messaging_binding_address:       'whatsapp:+15558675309',
+    messaging_binding_proxy_address: 'whatsapp:+15017122661'
+  )
+```
+
+### Parameters
+
+<ParamField path="identity" type="string">
+  A unique string identifier for a chat (SDK) participant. Set this for Conversations SDK users. Non-null only when the participant is an SDK user.
+</ParamField>
+
+<ParamField path="messaging_binding_address" type="string">
+  The participant's phone or WhatsApp number (e.g. `+15558675309` or `whatsapp:+15558675309`). Used together with `messaging_binding_proxy_address` for SMS/WhatsApp participants.
+</ParamField>
+
+<ParamField path="messaging_binding_proxy_address" type="string">
+  The Twilio phone number or WhatsApp number the participant communicates through. This is your outbound sender.
+</ParamField>
+
+<ParamField path="messaging_binding_projected_address" type="string">
+  Twilio phone number used as the Group MMS communication mask for a participant with an `identity`.
+</ParamField>
+
+<ParamField path="role_sid" type="string">
+  SID of a conversation-level Role to assign to the participant.
+</ParamField>
+
+<ParamField path="attributes" type="string">
+  JSON metadata string for this participant.
+</ParamField>
+
+<Note>
+Set either `identity` or the `messaging_binding_*` pair — never both on the same participant.
+</Note>
+
+---
+
+## messages.create
+
+Post a message to a conversation.
+
+```ruby
+message = client.conversations.v1
+  .conversations('CHxxx')
+  .messages
+  .create(
+    author: 'system',
+    body:   'Your support ticket has been received.'
+  )
+
+puts message.sid   # => "IMxxx"
+puts message.index # => 0
+```
+
+### Parameters
+
+<ParamField path="author" type="string">
+  The channel-specific identifier of the message author. Defaults to `"system"`.
+</ParamField>
+
+<ParamField path="body" type="string">
+  The text content of the message, up to 1,600 characters.
+</ParamField>
+
+<ParamField path="media_sid" type="string">
+  SID of a media resource to attach to the message.
+</ParamField>
+
+<ParamField path="content_sid" type="string">
+  SID of a Rich Content template. When set, `body` and `media_sid` are ignored.
+</ParamField>
+
+<ParamField path="content_variables" type="string">
+  JSON string of template variable substitutions. Used with `content_sid`.
+</ParamField>
+
+<ParamField path="subject" type="string">
+  Email subject line for email-channel messages. Up to 256 characters.
+</ParamField>
+
+<ParamField path="attributes" type="string">
+  JSON metadata to attach to the message.
+</ParamField>
+
+---
+
+## conversations(sid).fetch
+
+Retrieve a conversation by SID or `unique_name`.
+
+```ruby
+conversation = client.conversations.v1.conversations('CHxxx').fetch
+puts conversation.state
+```
+
+---
+
+## conversations(sid).update
+
+Update a conversation's properties.
+
+```ruby
+client.conversations.v1.conversations('CHxxx').update(
+  friendly_name:   'Updated Name',
+  state:           'inactive',
+  timers_inactive: 'PT10M'  # ISO 8601: 10 minutes
+)
+```
+
+---
+
+## conversations(sid).delete
+
+Delete a conversation and all its messages and participants.
+
+```ruby
+client.conversations.v1.conversations('CHxxx').delete
+# => true
+```
+
+<Warning>
+Deleting a conversation is permanent and cannot be undone. All associated messages and participant bindings are also removed.
+</Warning>
+
+---
+
+## conversations.list
+
+List conversations with optional filters.
+
+```ruby
+conversations = client.conversations.v1.conversations.list(
+  state:      'active',
+  start_date: '2024-01-01T00:00:00Z',
+  end_date:   '2024-01-31T23:59:59Z',
+  limit:      50
+)
+
+conversations.each { |c| puts c.unique_name }
+```
+
+### Parameters
+
+<ParamField path="state" type="string">
+  Filter by state. Values: `active`, `inactive`, `closed`.
+</ParamField>
+
+<ParamField path="start_date" type="string">
+  ISO 8601 datetime (`YYYY-MM-DDT00:00:00Z`). Returns conversations created on or after this date.
+</ParamField>
+
+<ParamField path="end_date" type="string">
+  ISO 8601 datetime (`YYYY-MM-DDT23:59:59Z`). Returns conversations created on or before this date.
+</ParamField>
+
+<ParamField path="limit" type="integer">
+  Maximum number of records to return.
+</ParamField>
+
+---
+
+## ConversationInstance response fields
+
+<ResponseField name="sid" type="string">
+  Unique identifier of the conversation (`CHxxx`).
+</ResponseField>
+
+<ResponseField name="friendly_name" type="string">
+  Human-readable display name.
+</ResponseField>
+
+<ResponseField name="unique_name" type="string">
+  Application-defined unique name.
+</ResponseField>
+
+<ResponseField name="state" type="string">
+  Current state: `active`, `inactive`, or `closed`.
+</ResponseField>
+
+<ResponseField name="messaging_service_sid" type="string">
+  SID of the associated Messaging Service, if any.
+</ResponseField>
+
+<ResponseField name="attributes" type="string">
+  JSON metadata string.
+</ResponseField>
+
+<ResponseField name="date_created" type="time">
+  RFC 2822 timestamp when the conversation was created.
+</ResponseField>
+
+<ResponseField name="date_updated" type="time">
+  RFC 2822 timestamp when the conversation was last updated.
+</ResponseField>

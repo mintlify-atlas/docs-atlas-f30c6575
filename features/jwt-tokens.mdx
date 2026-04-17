@@ -1,0 +1,312 @@
+---
+title: "Generate JWT tokens with twilio-ruby"
+description: "Create Twilio JWT AccessTokens, ClientCapability tokens, and TaskRouter tokens using twilio-ruby for browser and mobile client auth."
+---
+
+Twilio's browser and mobile SDKs (Twilio Voice JavaScript, Twilio Video, Twilio Conversations, and others) require a short-lived JSON Web Token (JWT) to authenticate the client without exposing your account credentials. Your server generates the token, signs it with a key secret, and delivers it to the client. The client presents the token to Twilio when establishing a connection. The `twilio-ruby` library provides three token classes that cover the common use cases: `AccessToken` for modern SDKs, `ClientCapability` for the legacy Twilio Client JS SDK, and `TaskRouterCapability` for TaskRouter workers and workspaces.
+
+## AccessToken
+
+`Twilio::JWT::AccessToken` is the general-purpose token class. You construct it with your Account SID, an API Key SID, and an API Key secret (not your auth token), then attach one or more grants that determine what the token allows.
+
+### Constructor
+
+```ruby
+require 'twilio-ruby'
+
+account_sid   = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+api_key_sid   = 'SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+api_key_secret = 'your_api_key_secret'
+
+token = Twilio::JWT::AccessToken.new(
+  account_sid,
+  api_key_sid,
+  api_key_secret,
+  [],             # initial grants array (optional)
+  identity: 'alice',
+  ttl: 3600       # lifetime in seconds, default 3600
+)
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `account_sid` | String | Your Twilio Account SID |
+| `signing_key_sid` | String | API Key SID used to sign the token |
+| `secret` | String | API Key secret |
+| `grants` | Array | Initial grants (can also use `add_grant`) |
+| `identity:` | String | Client identity embedded in the token |
+| `ttl:` | Integer | Token lifetime in seconds (default `3600`) |
+| `nbf:` | Integer | Not-before timestamp (Unix epoch) |
+| `valid_until:` | Integer | Absolute expiry timestamp; overrides `ttl` |
+| `region:` | String | Twilio region (e.g. `"us1"`) |
+
+### Adding grants
+
+Call `add_grant` with any grant object before calling `to_s`:
+
+```ruby
+token = Twilio::JWT::AccessToken.new(account_sid, api_key_sid, api_key_secret)
+token.identity = 'alice'
+token.add_grant(some_grant)
+jwt_string = token.to_s
+```
+
+### Rendering the token
+
+`to_s` (aliased as `to_jwt`) returns the signed JWT string:
+
+```ruby
+puts token.to_s
+# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImN0eSI6InR3aWxpby1mcGE7dj0xIn0...
+```
+
+<Note>
+`AccessToken` uses HMAC-SHA256 (`HS256`) to sign the JWT. The header includes `cty: twilio-fpa;v=1`, which Twilio's SDKs require to identify the token type.
+</Note>
+
+## Available grants
+
+<CardGroup cols={2}>
+  <Card title="VoiceGrant" icon="phone">
+    Authorizes the Twilio Voice JavaScript or mobile SDK to make and/or receive calls.
+  </Card>
+  <Card title="VideoGrant" icon="video">
+    Authorizes access to a specific Twilio Video room.
+  </Card>
+  <Card title="ChatGrant" icon="comments">
+    Authorizes access to Twilio Conversations (formerly Chat).
+  </Card>
+  <Card title="SyncGrant" icon="rotate">
+    Authorizes access to a Twilio Sync service.
+  </Card>
+</CardGroup>
+
+### VoiceGrant
+
+```ruby
+voice_grant = Twilio::JWT::AccessToken::VoiceGrant.new
+voice_grant.incoming_allow = true                         # allow incoming calls
+voice_grant.outgoing_application_sid = 'APxxxxxxxxxxxxx' # TwiML App for outgoing calls
+
+token = Twilio::JWT::AccessToken.new(account_sid, api_key_sid, api_key_secret)
+token.identity = 'alice'
+token.add_grant(voice_grant)
+
+puts token.to_s
+```
+
+`VoiceGrant` attributes:
+
+| Attribute | Description |
+|---|---|
+| `incoming_allow` | Set to `true` to permit incoming calls |
+| `outgoing_application_sid` | SID of the TwiML App for outgoing calls |
+| `outgoing_application_params` | Hash of params passed to the TwiML App |
+| `push_credential_sid` | SID of push credential for mobile apps |
+| `endpoint_id` | Custom endpoint identifier |
+
+### VideoGrant
+
+```ruby
+video_grant = Twilio::JWT::AccessToken::VideoGrant.new
+video_grant.room = 'DailyStandup'
+
+token = Twilio::JWT::AccessToken.new(account_sid, api_key_sid, api_key_secret)
+token.identity = 'bob'
+token.add_grant(video_grant)
+
+puts token.to_s
+```
+
+### ChatGrant
+
+```ruby
+chat_grant = Twilio::JWT::AccessToken::ChatGrant.new
+chat_grant.service_sid = 'ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+token = Twilio::JWT::AccessToken.new(account_sid, api_key_sid, api_key_secret)
+token.identity = 'carol'
+token.add_grant(chat_grant)
+
+puts token.to_s
+```
+
+`ChatGrant` attributes: `service_sid`, `endpoint_id`, `deployment_role_sid`, `push_credential_sid`.
+
+### SyncGrant
+
+```ruby
+sync_grant = Twilio::JWT::AccessToken::SyncGrant.new
+sync_grant.service_sid = 'ISxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+token = Twilio::JWT::AccessToken.new(account_sid, api_key_sid, api_key_secret)
+token.identity = 'dave'
+token.add_grant(sync_grant)
+
+puts token.to_s
+```
+
+## ClientCapability
+
+`Twilio::JWT::ClientCapability` is the token class for the older Twilio Client JavaScript SDK. Unlike `AccessToken`, it is signed with your account auth token directly and uses a scope-based permission model.
+
+```ruby
+require 'twilio-ruby'
+
+account_sid = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+auth_token  = 'your_auth_token'
+
+capability = Twilio::JWT::ClientCapability.new(account_sid, auth_token)
+```
+
+Constructor parameters: `account_sid`, `auth_token`, and optional keyword arguments `scopes:`, `nbf:`, `ttl:`, `valid_until:`.
+
+### OutgoingClientScope
+
+Allows the client to make outgoing calls to a TwiML Application:
+
+```ruby
+outgoing_scope = Twilio::JWT::ClientCapability::OutgoingClientScope.new(
+  'AP11111111111111111111111111111111', # application SID
+  'alice',                              # optional client name
+  { param1: 'value1' }                  # optional params passed to TwiML App
+)
+capability.add_scope(outgoing_scope)
+```
+
+### IncomingClientScope
+
+Allows the client to receive incoming calls addressed to a named identity:
+
+```ruby
+incoming_scope = Twilio::JWT::ClientCapability::IncomingClientScope.new('alice')
+capability.add_scope(incoming_scope)
+```
+
+### Full example
+
+```ruby
+require 'twilio-ruby'
+
+account_sid = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+auth_token  = 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'
+
+capability = Twilio::JWT::ClientCapability.new(account_sid, auth_token)
+
+# Allow outgoing calls to a TwiML Application
+outgoing_scope = Twilio::JWT::ClientCapability::OutgoingClientScope.new(
+  'AP11111111111111111111111111111111'
+)
+capability.add_scope(outgoing_scope)
+
+# Allow incoming calls to 'andrew'
+incoming_scope = Twilio::JWT::ClientCapability::IncomingClientScope.new('andrew')
+capability.add_scope(incoming_scope)
+
+# Generate the token string
+@token = capability.to_s
+```
+
+<Warning>
+`ClientCapability` is signed with your account auth token. Do not expose the token object itself on the client side — only send the serialized JWT string returned by `to_s`.
+</Warning>
+
+## TaskRouterCapability
+
+`Twilio::JWT::TaskRouterCapability` generates tokens for TaskRouter workers, workspaces, and task queues. It is signed with your auth token.
+
+```ruby
+require 'twilio-ruby'
+
+account_sid   = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+auth_token    = 'your_auth_token'
+workspace_sid = 'WSxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+worker_sid    = 'WKxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+capability = Twilio::JWT::TaskRouterCapability.new(
+  account_sid,
+  auth_token,
+  workspace_sid,
+  worker_sid,   # channel_id — can be a Worker SID (WK) or TaskQueue SID (WQ)
+  ttl: 3600
+)
+
+puts capability.to_s
+```
+
+The `channel_id` parameter determines which resource the token is scoped to:
+
+- SIDs beginning with `WK` — token includes a `worker_sid` claim
+- SIDs beginning with `WQ` — token includes a `taskqueue_sid` claim
+
+The token automatically includes WebSocket GET and POST policies for the event bridge, which the TaskRouter JavaScript SDK uses to receive real-time events.
+
+### Adding custom policies
+
+Use `add_policy` to grant access to specific TaskRouter REST API resources:
+
+```ruby
+# Grant read access to all tasks in the workspace
+tasks_url = Twilio::JWT::TaskRouterCapability::TaskRouterUtils.all_tasks(workspace_sid)
+policy = Twilio::JWT::TaskRouterCapability::Policy.new(tasks_url, 'GET', true)
+capability.add_policy(policy)
+```
+
+`TaskRouterUtils` provides helper methods to construct the correct TaskRouter API URLs:
+
+```ruby
+utils = Twilio::JWT::TaskRouterCapability::TaskRouterUtils
+
+utils.workspace(workspace_sid)             # workspace URL
+utils.workers(workspace_sid)               # workers collection URL
+utils.worker(workspace_sid, worker_sid)    # specific worker URL
+utils.tasks(workspace_sid)                 # tasks collection URL
+utils.all_tasks(workspace_sid)             # wildcard tasks URL
+utils.activities(workspace_sid)            # activities URL
+utils.reservations(workspace_sid, worker_sid) # reservations URL
+```
+
+The `worker_policies` convenience method returns a standard set of read policies for a worker:
+
+```ruby
+policies = Twilio::JWT::TaskRouterCapability::TaskRouterUtils.worker_policies(
+  workspace_sid, worker_sid
+)
+policies.each { |p| capability.add_policy(p) }
+```
+
+## Delivering tokens to clients
+
+<Steps>
+  <Step title="Generate the token server-side">
+    Create the token in a controller or route handler. Keep your API key secret and auth token in environment variables.
+
+    ```ruby
+    require 'twilio-ruby'
+
+    get '/token' do
+      grant = Twilio::JWT::AccessToken::VoiceGrant.new
+      grant.incoming_allow = true
+      grant.outgoing_application_sid = ENV['TWIML_APP_SID']
+
+      token = Twilio::JWT::AccessToken.new(
+        ENV['TWILIO_ACCOUNT_SID'],
+        ENV['TWILIO_API_KEY'],
+        ENV['TWILIO_API_SECRET'],
+        identity: params[:identity] || 'anonymous',
+        ttl: 3600
+      )
+      token.add_grant(grant)
+
+      content_type :json
+      { token: token.to_s }.to_json
+    end
+    ```
+  </Step>
+  <Step title="Return the token as JSON">
+    Send the serialized JWT string as a JSON field. The client SDK accepts the raw string.
+  </Step>
+  <Step title="Use the token in the browser or mobile SDK">
+    Pass the token string to the SDK's `Device` constructor or equivalent initialization call. Tokens expire after `ttl` seconds — build in a refresh mechanism for long-lived sessions.
+  </Step>
+</Steps>

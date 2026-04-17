@@ -1,0 +1,155 @@
+---
+title: "Handle errors and exceptions in twilio-ruby"
+description: "Catch and handle Twilio API errors using Twilio::REST::RestError — covers status codes, error codes, exception attributes, and transient retry patterns."
+---
+
+When the Twilio API returns a 4xx or 5xx HTTP status code, `twilio-ruby` raises a `Twilio::REST::RestError`. This includes validation errors such as an unrecognized phone number format (400), authentication failures (401), and transient server errors (500). Because 4xx errors are a normal part of API operation—not exceptional events—your application should rescue and handle them wherever you call Twilio.
+
+## Basic rescue pattern
+
+Wrap any Twilio API call in a `begin`/`rescue` block and catch `Twilio::REST::RestError`:
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+
+begin
+  messages = client.messages.list(limit: 20)
+rescue Twilio::REST::RestError => e
+  puts e.message
+end
+```
+
+## Exception attributes
+
+`Twilio::REST::RestError` exposes structured information about the failure directly from the API response body:
+
+| Attribute       | Type      | Description                                                  |
+| --------------- | --------- | ------------------------------------------------------------ |
+| `status_code`   | `Integer` | The HTTP status code (e.g. `400`, `401`, `500`)              |
+| `code`          | `Integer` | Twilio error code (e.g. `21211` for invalid To number)       |
+| `message`       | `String`  | Formatted message including HTTP status, code, and details   |
+| `error_message` | `String`  | Raw error message from the API response body                 |
+| `more_info`     | `String`  | URL to the Twilio error documentation for this code          |
+| `details`       | `Hash`    | Additional structured details when provided by the API       |
+| `response`      | Object    | The full HTTP response object                                |
+
+```ruby
+begin
+  client.messages.create(
+    from: '+14159341234',
+    to:   '+1invalid',
+    body: 'Hello!'
+  )
+rescue Twilio::REST::RestError => e
+  puts e.status_code    # => 400
+  puts e.code           # => 21211
+  puts e.error_message  # => "The 'To' number +1invalid is not a valid phone number."
+  puts e.more_info      # => "https://www.twilio.com/docs/errors/21211"
+end
+```
+
+The `message` attribute combines all available context into a single formatted string:
+
+```
+[HTTP 400] 21211 : Unable to create record
+The 'To' number +1invalid is not a valid phone number.
+https://www.twilio.com/docs/errors/21211
+```
+
+## Common error scenarios
+
+<AccordionGroup>
+  <Accordion title="Invalid phone number (400 / code 21211)">
+    The `To` number could not be recognized. Validate the number format before calling the API, or present a user-facing error asking the caller to check the number.
+
+    ```ruby
+    rescue Twilio::REST::RestError => e
+      if e.code == 21211
+        puts "Invalid destination number. Please check and try again."
+      end
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Cannot deliver SMS to this number (400 / code 21614)">
+    The destination number is not capable of receiving SMS. Check whether the number supports SMS before messaging it.
+  </Accordion>
+
+  <Accordion title="Authentication error (401)">
+    The Account SID or Auth Token is incorrect, or the credentials have been revoked. Verify your environment variables are set correctly.
+
+    ```ruby
+    rescue Twilio::REST::RestError => e
+      if e.status_code == 401
+        puts "Authentication failed. Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
+      end
+    end
+    ```
+  </Accordion>
+
+  <Accordion title="Insufficient funds (400 / code 20003)">
+    Your Twilio account balance is too low to complete the request. Top up your balance in the Twilio Console.
+  </Accordion>
+
+  <Accordion title="Server error (500 / 503)">
+    A transient error occurred on Twilio's infrastructure. These are typically short-lived and safe to retry with a delay.
+  </Accordion>
+</AccordionGroup>
+
+## Logging errors
+
+Log the full exception before handling it so you have an audit trail. If you have already configured `client.logger`, use the same logger for consistency:
+
+```ruby
+require 'logger'
+
+logger = Logger.new(STDOUT)
+client = Twilio::REST::Client.new(account_sid, auth_token)
+client.logger = logger
+
+begin
+  client.messages.create(from: '+14159341234', to: to_number, body: 'Hello!')
+rescue Twilio::REST::RestError => e
+  logger.error("Twilio error #{e.code} (HTTP #{e.status_code}): #{e.error_message}")
+  logger.error(e.more_info) if e.more_info
+  raise
+end
+```
+
+## Retrying on transient failures
+
+Retry only on 5xx responses (server-side errors), not on 4xx responses (client-side errors that will not change without a code fix). Use exponential backoff to avoid overwhelming the API during an outage.
+
+```ruby
+MAX_RETRIES = 3
+
+def send_message_with_retry(client, params)
+  attempts = 0
+
+  begin
+    attempts += 1
+    client.messages.create(**params)
+  rescue Twilio::REST::RestError => e
+    # Retry only on 5xx errors
+    if e.status_code >= 500 && attempts < MAX_RETRIES
+      sleep(2 ** attempts)  # 2s, 4s, 8s
+      retry
+    end
+
+    raise
+  end
+end
+```
+
+<Warning>
+Never retry 4xx errors automatically. An invalid number, an authentication failure, or a request with bad parameters will return the same 4xx on every attempt and will consume your API quota.
+</Warning>
+
+<Tip>
+Twilio error codes are documented at [https://www.twilio.com/docs/errors](https://www.twilio.com/docs/errors). The `more_info` attribute on `RestError` links directly to the page for the specific error code raised.
+</Tip>

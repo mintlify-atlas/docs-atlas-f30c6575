@@ -1,0 +1,258 @@
+---
+title: "Messages REST API reference"
+description: "Reference for client.messages in twilio-ruby — create, fetch, update, delete, and list SMS/MMS messages with all supported parameters."
+---
+
+`client.messages` provides access to the Twilio Messages resource under API v2010. It delegates to `client.api.v2010.account.messages`. Calling `client.messages` with no argument returns a `MessageList` you can use to create or list messages. Calling it with a SID returns a `MessageContext` scoped to that specific message.
+
+## messages.create
+
+Send an outbound SMS, MMS, or channel message.
+
+```ruby
+message = client.messages.create(
+  to:                   '+15558675309',
+  from:                 '+15017122661',
+  body:                 'Hello from Ruby!',
+  media_url:            ['https://example.com/image.jpg'],
+  status_callback:      'https://example.com/callback',
+  messaging_service_sid: 'MGxxx'
+)
+
+puts message.sid    # => "SMxxx"
+puts message.status # => "queued"
+```
+
+<Note>
+You must supply either `from` or `messaging_service_sid`, but not necessarily both. When `messaging_service_sid` is provided and `from` is omitted, Twilio selects an optimal sender from the Messaging Service's Sender Pool.
+</Note>
+
+### Parameters
+
+<ParamField path="to" type="string" required>
+  The recipient's phone number in E.164 format (e.g. `+15558675309`) or a channel address (e.g. `whatsapp:+15552229999`).
+</ParamField>
+
+<ParamField path="from" type="string">
+  The sender's Twilio phone number in E.164 format, alphanumeric sender ID, short code, or channel address. Must be a Twilio-hosted number belonging to your account.
+</ParamField>
+
+<ParamField path="messaging_service_sid" type="string">
+  The SID of a Messaging Service (`MGxxx`). When provided without `from`, Twilio picks the best sender from the Service's Sender Pool.
+</ParamField>
+
+<ParamField path="body" type="string">
+  The text content of the message. Up to 1,600 characters. SMS bodies exceeding 160 GSM-7 (or 70 UCS-2) characters are split into segments and billed separately.
+</ParamField>
+
+<ParamField path="media_url" type="string[]">
+  One or more URLs of media to attach (MMS). Supported types: `jpeg`, `jpg`, `gif`, `png` up to 5 MB; other accepted MIME types up to 500 KB. Maximum 10 URLs per message.
+</ParamField>
+
+<ParamField path="status_callback" type="string">
+  A URL Twilio calls with message status updates. Must contain a valid hostname; underscores are not permitted. Overrides any Status Callback URL set on the Messaging Service.
+</ParamField>
+
+<ParamField path="application_sid" type="string">
+  SID of a TwiML Application whose `message_status_callback` URL receives status events. Ignored when `status_callback` is also set.
+</ParamField>
+
+<ParamField path="validity_period" type="string">
+  Maximum seconds the message can remain queued before being discarded. Accepts integers from `1` to `36000`. Default is `36000`. A value greater than `5` is recommended.
+</ParamField>
+
+<ParamField path="send_at" type="time">
+  ISO 8601 timestamp for scheduled delivery. Requires `schedule_type` to be set.
+</ParamField>
+
+<ParamField path="schedule_type" type="string">
+  Set to `"fixed"` to enable scheduled messaging alongside `send_at`.
+</ParamField>
+
+<ParamField path="content_sid" type="string">
+  SID of a Content Template (`HXxxx`) to use for the message body. When set, `body` and `media_url` are ignored.
+</ParamField>
+
+<ParamField path="content_variables" type="string">
+  JSON string of key-value pairs substituted into the Content Template. Requires `content_sid`.
+</ParamField>
+
+<ParamField path="shorten_urls" type="boolean">
+  Set to `true` to shorten links in the message body. Requires a Messaging Service with Link Shortening configured.
+</ParamField>
+
+<ParamField path="send_as_mms" type="boolean">
+  When `true`, delivers the message as a single MMS regardless of media presence.
+</ParamField>
+
+<ParamField path="smart_encoded" type="boolean">
+  When `true`, replaces Unicode characters that have GSM-7 equivalents to reduce segment count.
+</ParamField>
+
+---
+
+## messages(sid).fetch
+
+Retrieve a single message by SID.
+
+```ruby
+message = client.messages('SMxxx').fetch
+puts message.body
+puts message.status
+```
+
+Returns a `MessageInstance`.
+
+---
+
+## messages(sid).update
+
+Redact or cancel a message. To redact the body, pass an empty string. To cancel a scheduled message, pass `status: 'canceled'`.
+
+```ruby
+# Redact body
+client.messages('SMxxx').update(body: '')
+
+# Cancel a scheduled message
+client.messages('SMxxx').update(status: 'canceled')
+```
+
+### Parameters
+
+<ParamField path="body" type="string">
+  The new body for the message. Pass an empty string `""` to redact the message content.
+</ParamField>
+
+<ParamField path="status" type="string">
+  Pass `"canceled"` to cancel a scheduled message before it sends.
+</ParamField>
+
+---
+
+## messages(sid).delete
+
+Delete a message record from your account.
+
+```ruby
+client.messages('SMxxx').delete
+# => true
+```
+
+<Warning>
+Deleting a message removes it from your account records but does not unsend a message that has already been delivered.
+</Warning>
+
+---
+
+## messages.list
+
+List message records with optional filters. Loads all matching records into memory up to `limit`.
+
+```ruby
+messages = client.messages.list(
+  to:               '+15558675309',
+  from:             '+15017122661',
+  date_sent:        Time.parse('2024-01-15'),
+  limit:            20
+)
+
+messages.each { |m| puts "#{m.sid}: #{m.status}" }
+```
+
+### Parameters
+
+<ParamField path="to" type="string">
+  Filter messages sent to this number or channel address.
+</ParamField>
+
+<ParamField path="from" type="string">
+  Filter messages sent from this number or channel address.
+</ParamField>
+
+<ParamField path="date_sent" type="time">
+  Filter messages with this exact `sent_date` (GMT, `YYYY-MM-DD`).
+</ParamField>
+
+<ParamField path="date_sent_before" type="time">
+  Filter messages sent on or before this date.
+</ParamField>
+
+<ParamField path="date_sent_after" type="time">
+  Filter messages sent on or after this date.
+</ParamField>
+
+<ParamField path="limit" type="integer">
+  Maximum number of records to return. No limit by default.
+</ParamField>
+
+<ParamField path="page_size" type="integer">
+  Records per API page. Defaults to 50; maximum 1000. The SDK auto-tunes this when only `limit` is set.
+</ParamField>
+
+---
+
+## MessageInstance response fields
+
+<ResponseField name="sid" type="string">
+  The unique identifier of the message (`SMxxx`).
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  The text content of the message.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  The current delivery status. Common values: `queued`, `sending`, `sent`, `delivered`, `undelivered`, `failed`, `read`.
+</ResponseField>
+
+<ResponseField name="direction" type="string">
+  Direction of the message: `inbound`, `outbound-api`, `outbound-call`, or `outbound-reply`.
+</ResponseField>
+
+<ResponseField name="from" type="string">
+  The sender's number or channel address in E.164 format.
+</ResponseField>
+
+<ResponseField name="to" type="string">
+  The recipient's number or channel address.
+</ResponseField>
+
+<ResponseField name="price" type="string">
+  The billed amount in the account's currency. Populated after delivery.
+</ResponseField>
+
+<ResponseField name="price_unit" type="string">
+  The ISO 4217 currency code for `price` (e.g. `"USD"`).
+</ResponseField>
+
+<ResponseField name="num_segments" type="string">
+  Number of SMS segments the message was split into.
+</ResponseField>
+
+<ResponseField name="num_media" type="string">
+  Number of media items attached.
+</ResponseField>
+
+<ResponseField name="messaging_service_sid" type="string">
+  SID of the Messaging Service used, if any.
+</ResponseField>
+
+<ResponseField name="error_code" type="integer">
+  Error code when `status` is `failed` or `undelivered`. `nil` on success.
+</ResponseField>
+
+<ResponseField name="error_message" type="string">
+  Human-readable description of `error_code`. `nil` on success.
+</ResponseField>
+
+<ResponseField name="date_created" type="time">
+  RFC 2822 timestamp when the record was created.
+</ResponseField>
+
+<ResponseField name="date_sent" type="time">
+  RFC 2822 timestamp when the message was sent.
+</ResponseField>
+
+<ResponseField name="date_updated" type="time">
+  RFC 2822 timestamp when the record was last updated.
+</ResponseField>

@@ -1,0 +1,149 @@
+---
+title: "Make and receive voice calls with twilio-ruby"
+description: "Initiate outbound voice calls, inspect and modify live calls, and build IVR flows using twilio-ruby's calls resource and TwiML VoiceResponse."
+---
+
+`twilio-ruby` lets you initiate outbound calls, inspect call state, modify a live call, and generate the TwiML that controls what callers hear. Outbound calls go through `client.calls.create`; TwiML responses are built with `Twilio::TwiML::VoiceResponse`.
+
+## Prerequisites
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+## Make an outbound call
+
+`client.calls.create` dials `to` from `from` and fetches TwiML from `url` once the call is answered.
+
+```ruby
+call = client.calls.create(
+  from: '+14159341234',
+  to:   '+18004567890',
+  url:  'https://example.com/call-handler'
+)
+
+puts call.sid    # CA...
+puts call.status # queued
+```
+
+<Note>
+  The `url` must respond with valid TwiML. Twilio makes an HTTP request to this URL when the called party answers.
+</Note>
+
+## Fetch call status
+
+Use the call SID to retrieve the latest status:
+
+```ruby
+sid = 'CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+call = client.calls(sid).fetch
+
+puts call.status    # queued, ringing, in-progress, completed, etc.
+puts call.direction # outbound-api
+puts call.duration  # seconds (nil until completed)
+```
+
+## Control a live call
+
+`client.calls(sid).update` can redirect a live call to new TwiML or terminate it:
+
+```ruby
+sid = 'CAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+# Redirect to new TwiML
+client.calls(sid).update(url: 'https://example.com/new-handler')
+
+# Cancel a queued call before it connects
+client.calls(sid).update(status: 'canceled')
+
+# Hang up a call that is in progress
+client.calls(sid).update(status: 'completed')
+```
+
+<Warning>
+  `status: 'canceled'` only works while the call is in the `queued` or `ringing` state. Use `status: 'completed'` to end an in-progress call.
+</Warning>
+
+## Generate TwiML for the call URL
+
+Use `Twilio::TwiML::VoiceResponse` in your web framework to produce the XML Twilio expects. The block form appends elements to the response:
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Hello! Press any key to continue.', voice: 'alice')
+  r.dial(caller_id: '+14159341234') do |d|
+    d.number '+18005551234'
+  end
+end
+
+puts response.to_s
+```
+
+This produces:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Hello! Press any key to continue.</Say>
+  <Dial callerId="+14159341234">
+    <Number>+18005551234</Number>
+  </Dial>
+</Response>
+```
+
+### Build an IVR menu with Gather
+
+Use `gather` to collect key presses and branch logic in your webhook handler:
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.gather(num_digits: 1, action: '/ivr/handle-key') do |g|
+    g.say(message: 'Press 1 for sales, press 2 for support.')
+  end
+  r.say(message: 'We did not receive your input. Goodbye.')
+end
+```
+
+<Tip>
+  Use the `action` attribute on `gather` to POST the caller's input to a different endpoint where you can route the call conditionally.
+</Tip>
+
+## List calls with filters
+
+`client.calls.list` returns an array of `CallInstance` objects. Filter by time or direction:
+
+```ruby
+# Last 10 calls placed after a given date
+client.calls.list(start_time: '2024-01-01', limit: 10).each do |call|
+  puts "#{call.sid} #{call.direction} #{call.status}"
+end
+```
+
+Stream calls lazily to avoid loading all records into memory at once:
+
+```ruby
+client.calls.stream(limit: 100).each do |call|
+  puts call.direction
+end
+```
+
+## Error handling
+
+```ruby
+begin
+  call = client.calls.create(
+    from: '+14159341234',
+    to:   '+18004567890',
+    url:  'https://example.com/call-handler'
+  )
+rescue Twilio::REST::RestError => e
+  puts e.message
+  puts e.code
+end
+```

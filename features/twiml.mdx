@@ -1,0 +1,323 @@
+---
+title: "Generate TwiML with twilio-ruby"
+description: "Use twilio-ruby to build TwiML responses that control Twilio voice calls and SMS messages — with VoiceResponse, MessagingResponse, and more."
+---
+
+TwiML (Twilio Markup Language) is the XML-based instruction set that tells Twilio how to handle an incoming or outgoing call or message. When Twilio reaches the URL you configure on a phone number or messaging service, your application responds with TwiML. The `twilio-ruby` library provides a builder API that lets you construct valid TwiML in pure Ruby — no string concatenation or manual XML escaping required. Responses are represented as Ruby objects that serialize to XML via `to_s`.
+
+## VoiceResponse
+
+`Twilio::TwiML::VoiceResponse` is the root element for all voice TwiML. It renders as a `<Response>` element that wraps the verbs you add to it. The class accepts an optional block; verbs appended inside the block are children of the response.
+
+```ruby
+require 'twilio-ruby'
+
+response = Twilio::TwiML::VoiceResponse.new
+response.to_s
+# => <?xml version="1.0" encoding="UTF-8"?><Response/>
+```
+
+### Say
+
+Reads a message to the caller using text-to-speech. Pass `message:` as the text content and optionally `voice:`, `loop:`, and `language:`.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Hello, welcome to Acme Corp.', voice: 'alice', language: 'en-US')
+end
+
+puts response.to_s
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say language="en-US" voice="alice">Hello, welcome to Acme Corp.</Say>
+</Response>
+```
+
+### Play
+
+Plays an audio file to the caller. The `url:` keyword specifies the media URL; `loop:` controls how many times it repeats.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.play(url: 'https://example.com/hold-music.mp3', loop: 3)
+end
+```
+
+### Dial
+
+Connects the caller to another party. You can dial a plain phone number by passing `number:`, or nest nouns such as `<Client>`, `<Conference>`, `<Number>`, and `<Sip>` inside a block.
+
+```ruby
+# Dial a phone number directly
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.dial(number: '+14155551234', caller_id: '+14159992222')
+end
+```
+
+```ruby
+# Dial a Twilio Client by identity
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'hello there', voice: 'alice')
+  r.dial(caller_id: '+14159992222') do |d|
+    d.client 'jenny'
+  end
+end
+```
+
+The resulting XML:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">hello there</Say>
+  <Dial callerId="+14159992222">
+    <Client>jenny</Client>
+  </Dial>
+</Response>
+```
+
+### Gather
+
+Collects keypad (DTMF) or speech input from the caller. Nest `say`, `play`, or `pause` inside the block to prompt the caller while waiting for input. When input is received, Twilio posts it to the `action:` URL.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.gather(action: '/handle-input', method: 'POST', num_digits: 1) do |g|
+    g.say(message: 'Press 1 for sales, or 2 for support.')
+  end
+end
+```
+
+Key parameters:
+
+| Parameter | Description |
+|---|---|
+| `action:` | URL Twilio posts collected input to |
+| `method:` | HTTP method for the action URL |
+| `num_digits:` | Number of DTMF digits to collect |
+| `input:` | `"dtmf"`, `"speech"`, or `"dtmf speech"` |
+| `timeout:` | Seconds to wait for input |
+| `language:` | Speech recognition locale |
+
+### Record
+
+Records the caller's audio. Twilio posts the recording URL to `recording_status_callback:` when it finishes.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Please leave a message after the tone.')
+  r.record(
+    action: '/recording-complete',
+    max_length: 120,
+    finish_on_key: '#',
+    transcribe: true,
+    transcribe_callback: '/transcription'
+  )
+end
+```
+
+### Redirect
+
+Transfers control of the call to TwiML at a different URL. This ends processing of the current TwiML document.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.redirect('https://example.com/next-step', method: 'GET')
+end
+```
+
+### Reject
+
+Rejects an incoming call without billing your account. The `reason:` parameter can be `"rejected"` or `"busy"`.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.reject(reason: 'busy')
+end
+```
+
+### Pause and Hangup
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Goodbye.')
+  r.pause(length: 1)
+  r.hangup
+end
+```
+
+## MessagingResponse
+
+`Twilio::TwiML::MessagingResponse` is the root element for SMS/MMS TwiML. It wraps `<Message>` and `<Redirect>` verbs.
+
+### Send a reply message
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message(body: 'Thanks for texting us!')
+end
+
+puts response.to_s
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Thanks for texting us!</Message>
+</Response>
+```
+
+### Send a message with media
+
+Use a block to nest `<Body>` and `<Media>` elements inside `<Message>`:
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message do |m|
+    m.body('Check out this image:')
+    m.media('https://example.com/photo.jpg')
+  end
+end
+```
+
+### Redirect
+
+Passes control to TwiML at another URL, identical in purpose to the voice `<Redirect>`:
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.redirect('https://example.com/next-message-handler')
+end
+```
+
+## Block-based builder syntax
+
+Every verb method on `VoiceResponse` and `MessagingResponse` accepts an optional Ruby block. The block receives the child element as its argument, letting you nest verbs to any depth without explicitly calling `append`.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.gather(action: '/process', num_digits: 1) do |g|
+    g.say(message: 'Press 1 to confirm.')
+    g.pause(length: 2)
+    g.say(message: 'Press 1 now.')
+  end
+  r.redirect('/timeout-handler')
+end
+```
+
+You can also append elements manually using the `append` method, which accepts any `TwiML` subclass instance:
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new
+say = Twilio::TwiML::Say.new(message: 'Hello', voice: 'alice')
+response.append(say)
+```
+
+## Rendering TwiML with to_s
+
+Call `to_s` (or its alias `to_xml`) on any response object to get a UTF-8 XML string with an XML declaration header. This string is what you return from your webhook handler with a `Content-Type: text/xml` header.
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Hello!')
+end
+
+puts response.to_s
+# <?xml version="1.0" encoding="UTF-8"?><Response><Say>Hello!</Say></Response>
+```
+
+<Note>
+Attribute names in Ruby use `snake_case` keyword arguments (e.g. `caller_id:`, `finish_on_key:`). The library automatically converts them to the `camelCase` attribute names required by TwiML (e.g. `callerId`, `finishOnKey`).
+</Note>
+
+## Common patterns
+
+<AccordionGroup>
+  <Accordion title="IVR menu with Gather">
+
+```ruby
+require 'twilio-ruby'
+
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.gather(action: '/ivr/handle-choice', num_digits: 1) do |g|
+    g.say(message: 'For sales, press 1. For support, press 2. To repeat, press 9.')
+  end
+  # Fallback if no input received
+  r.redirect('/ivr/welcome')
+end
+```
+
+  </Accordion>
+  <Accordion title="Voicemail recorder">
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: "You've reached our voicemail. Please leave a message after the tone.")
+  r.record(
+    action: '/voicemail/complete',
+    recording_status_callback: '/voicemail/status',
+    max_length: 180,
+    finish_on_key: '#',
+    transcribe: true,
+    transcribe_callback: '/voicemail/transcript'
+  )
+  r.say(message: 'Thank you. Goodbye.')
+  r.hangup
+end
+```
+
+  </Accordion>
+  <Accordion title="MMS reply with image">
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message do |m|
+    m.body('Here is your receipt:')
+    m.media('https://example.com/receipts/12345.png')
+  end
+end
+```
+
+  </Accordion>
+</AccordionGroup>
+
+## FaxResponse
+
+`Twilio::TwiML::FaxResponse` generates TwiML for receiving inbound faxes. It renders a `<Response>` element containing a `<Receive>` verb.
+
+```ruby
+require 'twilio-ruby'
+
+response = Twilio::TwiML::FaxResponse.new do |r|
+  r.receive(
+    action: 'https://example.com/fax/received',
+    method: 'POST',
+    media_type: 'application/pdf',
+    store_media: true
+  )
+end
+
+puts response.to_s
+```
+
+Output:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Receive action="https://example.com/fax/received" mediaType="application/pdf" storeMedia="true"/>
+</Response>
+```
+
+The `receive` method accepts these keyword arguments:
+
+| Parameter | Description |
+|-----------|-------------|
+| `action` | URL Twilio requests after receiving the fax |
+| `method` | HTTP method for the action URL (`GET` or `POST`) |
+| `media_type` | Format to store the fax media — `application/pdf` or `image/tiff` |
+| `page_size` | Page size to interpret received pages as (`Letter`, `Legal`, or `A4`) |
+| `store_media` | Whether to store the fax media in the Twilio fax media store (`true`/`false`) |

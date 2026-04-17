@@ -1,0 +1,181 @@
+---
+title: "Twilio::REST::Client reference"
+description: "Complete reference for Twilio::REST::Client — constructor parameters, domain accessors, shortcut methods, and client configuration options."
+---
+
+`Twilio::REST::Client` is the main entry point for every API call made by twilio-ruby. It holds credentials, manages the HTTP client, and exposes lazy-loaded domain accessors and shortcut methods that map directly to Twilio REST resources. The class inherits from `Twilio::REST::ClientBase`, which implements the underlying `request` method, URI construction (including region and edge routing), and header generation.
+
+## Constructor
+
+```ruby
+client = Twilio::REST::Client.new(
+  account_sid,          # required — your Twilio Account SID (ACxxx)
+  auth_token,           # required — your Twilio Auth Token
+  account_sid = nil,    # optional — override the operating account SID
+  region = nil,         # optional — e.g. "us1"
+  http_client = nil,    # optional — custom Twilio::HTTP::Client instance
+  logger = nil,         # optional — any Logger-compatible object
+  user_agent_extensions = nil  # optional — Array of strings appended to User-Agent
+)
+```
+
+<Note>
+When `account_sid` (third positional parameter) is omitted, the client uses the value provided as `username` (first parameter) as the operating account SID. This is the common case.
+</Note>
+
+Each parameter falls back to the matching value in `Twilio.configuration` when `nil` is supplied, so projects that call `Twilio.configure` once at startup need not pass credentials on every instantiation.
+
+### Parameters
+
+<ParamField path="username" type="string" required>
+  Your Twilio Account SID (`ACxxx`). Used as both the HTTP Basic Auth username and the default operating account SID.
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  Your Twilio Auth Token. Used as the HTTP Basic Auth password.
+</ParamField>
+
+<ParamField path="account_sid" type="string">
+  Override the operating account SID. When set, API paths use this SID instead of `username`. Useful for sub-account operations.
+</ParamField>
+
+<ParamField path="region" type="string">
+  Target a specific Twilio region. For example `"us1"`. When combined with `edge`, the SDK rewrites the request hostname accordingly.
+</ParamField>
+
+<ParamField path="http_client" type="object">
+  A custom HTTP client instance. Must respond to the same interface as `Twilio::HTTP::Client`. Useful for injecting test doubles or custom middleware.
+</ParamField>
+
+<ParamField path="logger" type="object">
+  A Logger-compatible object. When provided, the client logs request method, headers (excluding Authorization), host, path, query params, response status, and response headers at the `debug` level.
+</ParamField>
+
+<ParamField path="user_agent_extensions" type="array">
+  An array of strings appended to the `User-Agent` header, for example `["my-app/1.0"]`.
+</ParamField>
+
+## Key attributes
+
+The following attributes are readable and writable on a client instance (exposed via `attr_accessor` on `ClientBase`):
+
+| Attribute | Type | Description |
+|---|---|---|
+| `account_sid` | String | The operating account SID used in API paths. |
+| `auth_token` | String | The auth token used for HTTP Basic Auth. |
+| `username` | String | The HTTP Basic Auth username (same as the constructor's first arg). |
+| `password` | String | The HTTP Basic Auth password. |
+| `region` | String | The target Twilio region (e.g. `"us1"`). |
+| `edge` | String | The target Twilio edge location. |
+| `logger` | Logger | The configured logger instance. |
+| `http_client` | Object | The underlying HTTP client. |
+| `user_agent_extensions` | Array | Extra strings appended to `User-Agent`. |
+
+## Domain accessors
+
+Each accessor lazily instantiates its domain object on first access. All domains are memoised with `||=`.
+
+```ruby
+client.api           # Twilio::REST::Api
+client.accounts      # Twilio::REST::Accounts
+client.assistants    # Twilio::REST::Assistants
+client.bulkexports   # Twilio::REST::Bulkexports
+client.chat          # Twilio::REST::Chat
+client.content       # Twilio::REST::Content
+client.conversations # Twilio::REST::Conversations
+client.events        # Twilio::REST::Events
+client.flex_api      # Twilio::REST::FlexApi
+client.frontline_api # Twilio::REST::FrontlineApi
+client.iam           # Twilio::REST::Iam
+client.insights      # Twilio::REST::Insights
+client.intelligence  # Twilio::REST::Intelligence
+client.lookups       # Twilio::REST::Lookups
+client.messaging     # Twilio::REST::Messaging
+client.monitor       # Twilio::REST::Monitor
+client.notify        # Twilio::REST::Notify
+client.numbers       # Twilio::REST::Numbers
+client.pricing       # Twilio::REST::Pricing
+client.proxy         # Twilio::REST::Proxy
+client.serverless    # Twilio::REST::Serverless
+client.studio        # Twilio::REST::Studio
+client.supersim      # Twilio::REST::Supersim
+client.sync          # Twilio::REST::Sync
+client.taskrouter    # Twilio::REST::Taskrouter
+client.trunking      # Twilio::REST::Trunking
+client.verify        # Twilio::REST::Verify
+client.video         # Twilio::REST::Video
+client.voice         # Twilio::REST::Voice
+client.wireless      # Twilio::REST::Wireless
+```
+
+## Shortcut methods
+
+These methods delegate directly into `client.api.v2010.account`, providing a concise top-level interface for the most commonly used REST resources. When called with a SID argument, they return an instance context; when called with no argument, they return a list resource.
+
+```ruby
+# Messages
+client.messages                        # => MessageList
+client.messages('SMxxx')               # => MessageContext
+
+# Calls
+client.calls                           # => CallList
+client.calls('CAxxx')                  # => CallContext
+
+# Recordings
+client.recordings                      # => RecordingList
+client.recordings('RExxx')             # => RecordingContext
+
+# Incoming phone numbers
+client.incoming_phone_numbers          # => IncomingPhoneNumberList
+client.incoming_phone_numbers('PNxxx') # => IncomingPhoneNumberContext
+
+# Conferences
+client.conferences                     # => ConferenceList
+client.conferences('CFxxx')            # => ConferenceContext
+
+# Queues
+client.queues                          # => QueueList
+client.queues('QUxxx')                 # => QueueContext
+
+# Applications
+client.applications                    # => ApplicationList
+client.applications('APxxx')           # => ApplicationContext
+
+# Available phone numbers (by country code)
+client.available_phone_numbers         # => AvailablePhoneNumberCountryList
+client.available_phone_numbers('US')   # => AvailablePhoneNumberCountryContext
+
+# Keys, signing keys, transcriptions, notifications, etc.
+client.keys('SKxxx')
+client.signing_keys('SKxxx')
+client.transcriptions('TRxxx')
+client.notifications('NOxxx')
+client.outgoing_caller_ids('PNxxx')
+client.short_codes('SCxxx')
+client.addresses('ADxxx')
+client.connect_apps('CNxxx')
+client.authorized_connect_apps('CNxxx')
+```
+
+## String representation
+
+```ruby
+client.to_s
+# => "#<Twilio::REST::Client ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx>"
+```
+
+## SSL validation
+
+```ruby
+client.validate_ssl_certificate
+```
+
+Issues a GET to `https://tls-test.twilio.com` and raises `RestError` if the response status is outside the `2xx` range. Useful for verifying that your environment trusts the certificate chain used by Twilio.
+
+## Credential provider
+
+```ruby
+client.credential_provider(my_provider)
+```
+
+Sets a custom credential provider that implements `to_auth_strategy.auth_string`. When set, this takes precedence over the static `account_sid`/`auth_token` pair on every request.

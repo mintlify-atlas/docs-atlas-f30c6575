@@ -1,0 +1,96 @@
+---
+title: "twilio-ruby: Twilio SDK for Ruby"
+description: "twilio-ruby is the official Ruby gem for the Twilio API — send messages, make calls, generate TwiML, and create JWT tokens in Ruby."
+---
+
+`twilio-ruby` is the official Ruby helper library for the Twilio platform. It wraps the Twilio REST API in an idiomatic Ruby interface, so you can send SMS and MMS messages, make and receive voice calls, generate TwiML responses for webhooks, create JWT tokens for client-side authentication, and validate that inbound webhook requests genuinely come from Twilio — all without writing a line of raw HTTP code. The gem is published on RubyGems and supports MRI Ruby 2.4 through 3.2 as well as JRuby 9.2 through 9.4.
+
+## What you can build
+
+<CardGroup cols={2}>
+  <Card title="REST API client" icon="tower-broadcast" href="/usage/making-requests">
+    Interact with every Twilio product — Messaging, Voice, Video, Verify, and more — through a consistent Ruby object model.
+  </Card>
+  <Card title="TwiML generation" icon="code" href="/features/twiml">
+    Produce well-formed TwiML XML responses for voice and messaging webhooks using a clean Ruby DSL instead of string templates.
+  </Card>
+  <Card title="JWT tokens" icon="key" href="/features/jwt-tokens">
+    Generate Client Capability Tokens and Access Tokens to authenticate browser and mobile clients against Twilio services.
+  </Card>
+  <Card title="Webhook validation" icon="shield-check" href="/features/webhook-validation">
+    Verify that incoming webhook requests originate from Twilio using `Twilio::Security::RequestValidator` or the bundled Rack middleware.
+  </Card>
+</CardGroup>
+
+## Supported Ruby versions
+
+`twilio-ruby` is tested against the following Ruby implementations on every release:
+
+| Implementation | Versions |
+|---|---|
+| MRI Ruby | 2.4, 2.5, 2.6, 2.7, 3.0, 3.1, 3.2 |
+| JRuby | 9.2, 9.3, 9.4 |
+
+The gemspec sets a minimum of `ruby >= 2.0.0`, but the versions listed above are the ones actively tested in CI and recommended for production use.
+
+## Project structure
+
+The gem is organised into four top-level namespaces, each with a distinct responsibility:
+
+### `Twilio::REST::Client`
+
+The primary entry point for all API interactions. You initialise it once with your Account SID and Auth Token (or API Key credentials), and it exposes every Twilio resource as a chained method call:
+
+```ruby
+require 'twilio-ruby'
+
+@client = Twilio::REST::Client.new(account_sid, auth_token)
+
+# Send a message
+@client.messages.create(from: '+15005550006', to: '+12345678901', body: 'Hello!')
+
+# Make a call
+@client.calls.create(from: '+14159341234', to: '+16105557069', url: 'http://example.com')
+```
+
+### `Twilio::TwiML`
+
+Classes for generating TwiML documents that control how Twilio handles calls and messages. `Twilio::TwiML::VoiceResponse` and `Twilio::TwiML::MessagingResponse` each provide a block-based DSL that serialises to valid XML:
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'hello there', voice: 'alice')
+  r.dial(caller_id: '+14159992222') do |d|
+    d.client 'jenny'
+  end
+end
+
+puts response.to_s
+```
+
+### `Twilio::JWT`
+
+Helpers for producing signed JSON Web Tokens used by Twilio Client SDKs and other services. `Twilio::JWT::ClientCapability` handles legacy Capability Tokens; `Twilio::JWT::AccessToken` covers the newer grants-based tokens used by Programmable Video, Chat, and Voice.
+
+### `Twilio::Security`
+
+Contains `Twilio::Security::RequestValidator`, which verifies the `X-Twilio-Signature` header on incoming webhook requests. A Rack middleware wrapper is also loaded automatically when Rack is present, enabling signature validation as a standard middleware in Rails, Sinatra, and other Rack-based apps.
+
+## How the library is loaded
+
+When you `require 'twilio-ruby'`, the main entry point at `lib/twilio-ruby.rb` loads the framework layer, sets up autoloads for `Twilio::JWT`, `Twilio::TwiML`, `Twilio::HTTP`, and `Twilio::REST`, and registers the Rack middleware if Rack is already loaded. The REST client and all service-specific classes are generated from the Twilio OpenAPI spec, so the library surface always matches the API.
+
+<Note>
+  If you are migrating from twilio-ruby 5.x, read the [upgrade guide](https://github.com/twilio/twilio-ruby/wiki/Ruby-Version-5.x-Upgrade-Guide) before updating your Gemfile.
+</Note>
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Install the gem" icon="gem" href="/installation">
+    Add twilio-ruby to your Gemfile or install it directly with RubyGems.
+  </Card>
+  <Card title="Send your first message" icon="paper-plane" href="/quickstart">
+    Follow the quickstart to authenticate, initialise the client, and send an SMS in under five minutes.
+  </Card>
+</CardGroup>

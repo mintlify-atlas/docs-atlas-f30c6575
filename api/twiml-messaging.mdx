@@ -1,0 +1,177 @@
+---
+title: "TwiML MessagingResponse API reference"
+description: "Reference for Twilio::TwiML::MessagingResponse — message, media, and redirect verbs for controlling Twilio SMS and MMS responses in Ruby."
+---
+
+`Twilio::TwiML::MessagingResponse` generates the XML that Twilio reads when it receives a webhook for an inbound SMS or MMS. You build a response using Ruby methods that map directly to TwiML verbs, then render it with `to_s` and return it from your webhook endpoint.
+
+## MessagingResponse
+
+```ruby
+require 'twilio-ruby'
+
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message(body: 'Thanks for your message!')
+end
+
+puts response.to_s
+```
+
+Output:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>Thanks for your message!</Message>
+</Response>
+```
+
+### Constructor
+
+```ruby
+Twilio::TwiML::MessagingResponse.new(**keyword_args) { |r| ... }
+```
+
+Accepts an optional block yielding the response object for chaining verbs. Renders to XML via `to_s`.
+
+---
+
+## Verbs
+
+### message
+
+Sends an outbound message or replies to an inbound one.
+
+```ruby
+response.message(body: nil, to: nil, from: nil, action: nil, method: nil, status_callback: nil)
+```
+
+<ParamField path="body" type="string">
+  The text body of the message. Can also be set via a nested `Body` element.
+</ParamField>
+
+<ParamField path="to" type="string">
+  The phone number to send the message to. Defaults to the sender of the inbound message.
+</ParamField>
+
+<ParamField path="from" type="string">
+  The Twilio phone number to send from.
+</ParamField>
+
+<ParamField path="action" type="string">
+  URL to receive a webhook when the outbound message status changes.
+</ParamField>
+
+<ParamField path="method" type="string">
+  HTTP method for the action URL. Defaults to `POST`.
+</ParamField>
+
+<ParamField path="status_callback" type="string">
+  Deprecated. Use `action` instead.
+</ParamField>
+
+The block form lets you attach nested `Body` and `Media` elements:
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message(to: '+14155551234', from: '+15005550006') do |m|
+    m.body('Here is your image:')
+    m.media('https://example.com/image.png')
+  end
+end
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message to="+14155551234" from="+15005550006">
+    <Body>Here is your image:</Body>
+    <Media>https://example.com/image.png</Media>
+  </Message>
+</Response>
+```
+
+### redirect
+
+Redirects the webhook flow to another URL.
+
+```ruby
+response.redirect(url, method: nil)
+```
+
+<ParamField path="url" type="string" required>
+  The URL Twilio should fetch to get new TwiML instructions.
+</ParamField>
+
+<ParamField path="method" type="string">
+  HTTP method for the redirect. `GET` or `POST`. Defaults to `POST`.
+</ParamField>
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.redirect('https://example.com/handle-reply')
+end
+```
+
+---
+
+## Nested elements
+
+### Body
+
+Sets the message body as a child element instead of an attribute.
+
+```ruby
+message.body('Hello from Twilio!')
+```
+
+### Media
+
+Attaches a media URL for MMS messages.
+
+```ruby
+message.media('https://example.com/photo.jpg')
+```
+
+<Note>
+  MMS with media attachments is only supported when sending to US and Canadian phone numbers. Twilio will send the `media_url` as a link in SMS to other destinations.
+</Note>
+
+---
+
+## Full example: Reply with text and image
+
+```ruby
+require 'twilio-ruby'
+
+# In a Sinatra/Rails webhook handler:
+post '/sms' do
+  response = Twilio::TwiML::MessagingResponse.new do |r|
+    r.message do |m|
+      m.body('Thanks! Here is your confirmation.')
+      m.media('https://example.com/confirm.png')
+    end
+  end
+
+  content_type 'text/xml'
+  response.to_s
+end
+```
+
+---
+
+## Rendering
+
+Call `to_s` on any TwiML object to get the XML string:
+
+```ruby
+response = Twilio::TwiML::MessagingResponse.new do |r|
+  r.message(body: 'Hello!')
+end
+
+xml = response.to_s
+# => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Response>\n<Message>Hello!</Message>\n</Response>"
+```
+
+<Tip>
+  Set `Content-Type: text/xml` on your HTTP response when returning TwiML from a webhook handler.
+</Tip>

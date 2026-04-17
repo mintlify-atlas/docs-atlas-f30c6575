@@ -1,0 +1,258 @@
+---
+title: "TaskRouter REST API reference"
+description: "Reference for client.taskrouter in twilio-ruby — manage workspaces, workers, tasks, workflows, and task queues programmatically."
+---
+
+TaskRouter is Twilio's intelligent task distribution engine. It routes work items (Tasks) to available agents (Workers) according to rules defined in Workflows and Task Queues. `client.taskrouter.v1.workspaces` is the top-level entry point in twilio-ruby.
+
+## workspaces.create
+
+Create a TaskRouter Workspace. A Workspace is the container for all TaskRouter resources — Workers, Tasks, Workflows, Task Queues, and Activities.
+
+```ruby
+workspace = client.taskrouter.v1.workspaces.create(
+  friendly_name:      'Customer Support',
+  event_callback_url: 'https://example.com/taskrouter/events',
+  template:           'FIFO'
+)
+
+puts workspace.sid  # => "WSxxx"
+```
+
+### Parameters
+
+<ParamField path="friendly_name" type="string" required>
+  A descriptive name for the Workspace, up to 64 characters. For example: `"Customer Support"` or `"2024 Election Campaign"`.
+</ParamField>
+
+<ParamField path="event_callback_url" type="string">
+  URL Twilio calls when Workspace events occur (task created, canceled, worker activity updated, etc.). Used for data collection and reporting.
+</ParamField>
+
+<ParamField path="events_filter" type="string">
+  Comma-separated list of event names to deliver to `event_callback_url`. When omitted, all events are sent. Example: `"task.created,task.canceled,worker.activity.update"`.
+</ParamField>
+
+<ParamField path="multi_task_enabled" type="boolean">
+  Whether to enable multi-tasking. Default is `true`. Multi-tasking allows Workers to hold multiple active Reservations simultaneously.
+</ParamField>
+
+<ParamField path="template" type="string">
+  Pre-configuration template. `"NONE"` (default) creates a bare Workspace. `"FIFO"` pre-configures a first-in-first-out Workflow and a single Task Queue.
+</ParamField>
+
+<ParamField path="prioritize_queue_order" type="string">
+  Controls Task ordering within queues. `"FIFO"` (default) or `"LIFO"`.
+</ParamField>
+
+---
+
+## workers.create
+
+Create a Worker (agent) inside a Workspace.
+
+```ruby
+worker = client.taskrouter.v1
+  .workspaces('WSxxx')
+  .workers
+  .create(
+    friendly_name: 'Alice',
+    attributes:    '{"email":"alice@example.com","skills":["billing","technical"]}'
+  )
+
+puts worker.sid           # => "WKxxx"
+puts worker.activity_name # => "Offline"
+```
+
+### Parameters
+
+<ParamField path="friendly_name" type="string" required>
+  A descriptive name for the Worker, up to 64 characters.
+</ParamField>
+
+<ParamField path="attributes" type="string">
+  A JSON string describing the Worker's capabilities and metadata. This data is passed to the `assignment_callback_url` when a Task is assigned. Defaults to `{}`.
+</ParamField>
+
+<ParamField path="activity_sid" type="string">
+  SID of the initial Activity for this Worker. Defaults to the Workspace's `default_activity_sid` (typically `Offline`).
+</ParamField>
+
+---
+
+## tasks.create
+
+Create a Task to be distributed by a Workflow.
+
+```ruby
+task = client.taskrouter.v1
+  .workspaces('WSxxx')
+  .tasks
+  .create(
+    workflow_sid: 'WWxxx',
+    attributes:   '{"type":"billing","customer_id":"12345"}',
+    task_channel: 'voice'
+  )
+
+puts task.sid      # => "WTxxx"
+puts task.status   # => "pending"
+```
+
+### Parameters
+
+<ParamField path="workflow_sid" type="string">
+  SID of the Workflow to route this Task through. Optional when there is only one Workflow in the Workspace.
+</ParamField>
+
+<ParamField path="attributes" type="string">
+  A JSON string describing the Task. This data is passed to the `assignment_callback_url` when the Task is assigned to a Worker.
+</ParamField>
+
+<ParamField path="task_channel" type="string">
+  The TaskChannel for this Task when multi-tasking is enabled. Pass the channel's `unique_name` or SID. Default is `"default"`.
+</ParamField>
+
+<ParamField path="timeout" type="string">
+  Time-to-live in seconds. Up to 1,209,600 (two weeks). Default is `86400` (24 hours). On expiry, a `task.canceled` event fires.
+</ParamField>
+
+<ParamField path="priority" type="string">
+  Priority value between `0` and `2147483647`. Higher values are assigned first. Overrides the Workflow Target priority when provided.
+</ParamField>
+
+<ParamField path="task_queue_sid" type="string">
+  SID of the TaskQueue to place this Task in directly, bypassing Workflow routing.
+</ParamField>
+
+<ParamField path="routing_target" type="string">
+  SID of a specific Worker, Queue, or Workflow to route the Task to directly.
+</ParamField>
+
+<ParamField path="virtual_start_time" type="time">
+  Override the Task's virtual creation time for priority ordering. Cannot be in the future or before 1900.
+</ParamField>
+
+---
+
+## Task queues and workflows
+
+Access task queues and workflows through the workspace context:
+
+```ruby
+# List all task queues
+client.taskrouter.v1
+  .workspaces('WSxxx')
+  .task_queues
+  .list
+  .each { |q| puts q.friendly_name }
+
+# Create a task queue
+queue = client.taskrouter.v1
+  .workspaces('WSxxx')
+  .task_queues
+  .create(
+    friendly_name:            'Billing Queue',
+    target_workers:           'skills HAS "billing"',
+    reservation_activity_sid: 'WAreservationxxx',
+    assignment_activity_sid:  'WAassignmentxxx'
+  )
+
+# List all workflows
+client.taskrouter.v1
+  .workspaces('WSxxx')
+  .workflows
+  .list
+  .each { |w| puts "#{w.friendly_name}: #{w.sid}" }
+```
+
+---
+
+## workspaces(sid).workers
+
+Workers are accessible via the workspace context:
+
+```ruby
+# List workers
+workers = client.taskrouter.v1
+  .workspaces('WSxxx')
+  .workers
+  .list(activity_name: 'Idle')
+
+# Fetch a specific worker
+worker = client.taskrouter.v1
+  .workspaces('WSxxx')
+  .workers('WKxxx')
+  .fetch
+
+# Update a worker's activity
+client.taskrouter.v1
+  .workspaces('WSxxx')
+  .workers('WKxxx')
+  .update(activity_sid: 'WAidle_activity_sid')
+```
+
+---
+
+## TaskRouter JWT capability token
+
+TaskRouter uses JWT tokens to authorize client-side SDK connections. Reference the [JWT tokens feature guide](/features/jwt-tokens) for full implementation details.
+
+```ruby
+require 'twilio-ruby'
+
+capability = Twilio::JWT::TaskRouter::WorkerCapability.new(
+  account_sid:   'ACxxx',
+  auth_token:    'your_auth_token',
+  workspace_sid: 'WSxxx',
+  worker_sid:    'WKxxx'
+)
+
+capability.allow_update_worker_activities
+capability.allow_update_reservations
+
+token = capability.to_s
+```
+
+<Tip>
+Generate a new token before each worker session begins. Tokens are short-lived and should not be cached across sessions.
+</Tip>
+
+---
+
+## WorkspaceInstance response fields
+
+<ResponseField name="sid" type="string">
+  Unique identifier of the workspace (`WSxxx`).
+</ResponseField>
+
+<ResponseField name="friendly_name" type="string">
+  Human-readable display name.
+</ResponseField>
+
+<ResponseField name="default_activity_sid" type="string">
+  SID of the default Activity assigned to new Workers.
+</ResponseField>
+
+<ResponseField name="event_callback_url" type="string">
+  URL receiving Workspace event callbacks.
+</ResponseField>
+
+<ResponseField name="timeout_activity_sid" type="string">
+  SID of the Activity Workers are placed in when a reservation times out.
+</ResponseField>
+
+<ResponseField name="multi_task_enabled" type="boolean">
+  Whether multi-tasking is enabled for this Workspace.
+</ResponseField>
+
+<ResponseField name="prioritize_queue_order" type="string">
+  Task ordering strategy: `FIFO` or `LIFO`.
+</ResponseField>
+
+<ResponseField name="date_created" type="time">
+  RFC 2822 timestamp when the Workspace was created.
+</ResponseField>
+
+<ResponseField name="date_updated" type="time">
+  RFC 2822 timestamp when the Workspace was last updated.
+</ResponseField>

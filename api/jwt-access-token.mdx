@@ -1,0 +1,230 @@
+---
+title: "JWT AccessToken API reference"
+description: "Reference for Twilio::JWT::AccessToken and all grant classes — constructor params, add_grant, to_s, and available grants for browser and mobile SDKs."
+---
+
+`Twilio::JWT::AccessToken` generates short-lived JWT tokens that authenticate browser and mobile clients against Twilio's client-side SDKs (Voice, Video, Conversations, Sync). Each token is scoped to one or more grants that define what the client is allowed to do.
+
+## AccessToken
+
+### Constructor
+
+```ruby
+Twilio::JWT::AccessToken.new(
+  account_sid,
+  signing_key_sid,
+  secret,
+  grants = [],
+  identity: nil,
+  nbf: nil,
+  ttl: 3600,
+  valid_until: nil,
+  region: nil
+)
+```
+
+<ParamField path="account_sid" type="string" required>
+  Your Twilio Account SID (`ACxxxx`).
+</ParamField>
+
+<ParamField path="signing_key_sid" type="string" required>
+  The SID of the API Key used to sign the token (`SKxxxx`).
+</ParamField>
+
+<ParamField path="secret" type="string" required>
+  The secret of the API Key.
+</ParamField>
+
+<ParamField path="grants" type="array">
+  Array of grant objects to include. Can also be added via `add_grant`. Defaults to `[]`.
+</ParamField>
+
+<ParamField path="identity" type="string">
+  A unique identifier for the end-user (e.g. username). Required for most client SDKs.
+</ParamField>
+
+<ParamField path="ttl" type="integer">
+  Token lifetime in seconds. Defaults to `3600` (1 hour). Maximum is 86400 (24 hours).
+</ParamField>
+
+<ParamField path="nbf" type="integer">
+  Not-before time as a Unix timestamp. Token is invalid before this time.
+</ParamField>
+
+<ParamField path="valid_until" type="integer">
+  Expiry time as a Unix timestamp. Takes precedence over `ttl` if both are set.
+</ParamField>
+
+<ParamField path="region" type="string">
+  Twilio region for the token (e.g. `au1`).
+</ParamField>
+
+### Methods
+
+**`add_grant(grant)`** — Appends a grant object to the token.
+
+**`to_s`** — Renders the token as a signed JWT string to send to the client.
+
+### Basic example
+
+```ruby
+require 'twilio-ruby'
+
+token = Twilio::JWT::AccessToken.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_API_KEY'],
+  ENV['TWILIO_API_SECRET'],
+  [],
+  identity: 'alice'
+)
+
+puts token.to_s
+```
+
+---
+
+## Grant classes
+
+### VoiceGrant
+
+Allows the client to make and receive Twilio Voice calls.
+
+```ruby
+grant = Twilio::JWT::AccessToken::VoiceGrant.new
+grant.incoming_allow = true
+grant.outgoing_application_sid = 'APxxxx'
+grant.outgoing_application_params = { 'caller_id' => '+15005550006' }
+grant.push_credential_sid = 'CRxxxx'  # for push notifications
+grant.endpoint_id = 'unique-endpoint-id'
+
+token.add_grant(grant)
+```
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `incoming_allow` | boolean | Allow inbound calls to this client |
+| `outgoing_application_sid` | string | TwiML Application SID for outbound calls |
+| `outgoing_application_params` | hash | Custom params passed to the TwiML Application |
+| `push_credential_sid` | string | Push credential for mobile notifications |
+| `endpoint_id` | string | Unique identifier for this client endpoint |
+
+### VideoGrant
+
+Allows the client to connect to a Twilio Video room.
+
+```ruby
+grant = Twilio::JWT::AccessToken::VideoGrant.new
+grant.room = 'DailyStandup'
+
+token.add_grant(grant)
+```
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `room` | string | Name or SID of the Video room. If omitted, client can join any room. |
+
+### ChatGrant
+
+Allows the client to use Twilio Conversations (formerly Chat).
+
+```ruby
+grant = Twilio::JWT::AccessToken::ChatGrant.new
+grant.service_sid = 'ISxxxx'
+grant.push_credential_sid = 'CRxxxx'
+
+token.add_grant(grant)
+```
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `service_sid` | string | Conversations Service SID |
+| `endpoint_id` | string | Unique endpoint identifier |
+| `deployment_role_sid` | string | Role to assign on first connection |
+| `push_credential_sid` | string | Push credential SID |
+
+### SyncGrant
+
+Allows the client to use Twilio Sync for real-time data.
+
+```ruby
+grant = Twilio::JWT::AccessToken::SyncGrant.new
+grant.service_sid = 'ISxxxx'
+
+token.add_grant(grant)
+```
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `service_sid` | string | Sync Service SID |
+| `endpoint_id` | string | Unique endpoint identifier |
+
+### TaskRouterGrant
+
+Allows a TaskRouter worker to connect and accept tasks.
+
+```ruby
+grant = Twilio::JWT::AccessToken::TaskRouterGrant.new
+grant.workspace_sid = 'WSxxxx'
+grant.worker_sid = 'WKxxxx'
+grant.role = 'worker'
+
+token.add_grant(grant)
+```
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `workspace_sid` | string | TaskRouter Workspace SID |
+| `worker_sid` | string | Worker SID |
+| `role` | string | Role: `worker`, `supervisor`, or `admin` |
+
+---
+
+## Multiple grants
+
+A single token can carry multiple grants:
+
+```ruby
+token = Twilio::JWT::AccessToken.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_API_KEY'],
+  ENV['TWILIO_API_SECRET'],
+  [],
+  identity: 'bob',
+  ttl: 3600
+)
+
+voice_grant = Twilio::JWT::AccessToken::VoiceGrant.new
+voice_grant.incoming_allow = true
+
+video_grant = Twilio::JWT::AccessToken::VideoGrant.new
+video_grant.room = 'TeamRoom'
+
+token.add_grant(voice_grant)
+token.add_grant(video_grant)
+
+puts token.to_s
+```
+
+---
+
+## ClientCapability (legacy)
+
+`Twilio::JWT::ClientCapability` is the older token format for Twilio Client JS SDK v1.x. For newer SDKs, use `AccessToken` with `VoiceGrant` instead.
+
+```ruby
+capability = Twilio::JWT::ClientCapability.new(account_sid, auth_token)
+
+# Allow outbound calls to a TwiML Application
+outgoing = Twilio::JWT::ClientCapability::OutgoingClientScope.new('APxxxx')
+capability.add_scope(outgoing)
+
+# Allow inbound calls to a named client
+incoming = Twilio::JWT::ClientCapability::IncomingClientScope.new('alice')
+capability.add_scope(incoming)
+
+token_string = capability.to_s
+```
+
+<Note>
+  `ClientCapability` uses your Auth Token directly for signing. `AccessToken` with API Keys is preferred because API Keys can be revoked without changing your Auth Token.
+</Note>

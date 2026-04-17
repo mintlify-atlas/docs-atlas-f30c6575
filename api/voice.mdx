@@ -1,0 +1,277 @@
+---
+title: "Calls REST API reference"
+description: "Reference for client.calls in twilio-ruby — initiate outbound calls, fetch call records, update live calls, and list call history."
+---
+
+`client.calls` is a shortcut to `client.api.v2010.account.calls`. Calling it without arguments returns a `CallList` resource you can use to initiate calls or iterate through call history. Passing a SID returns a `CallContext` scoped to that specific call record.
+
+## calls.create
+
+Initiate an outbound call. You must supply either `url` or `twiml` to tell Twilio how to handle the call once connected.
+
+```ruby
+call = client.calls.create(
+  to:              '+15558675309',
+  from:            '+15017122661',
+  url:             'https://example.com/twiml',
+  record:          true,
+  status_callback: 'https://example.com/status'
+)
+
+puts call.sid    # => "CAxxx"
+puts call.status # => "queued"
+```
+
+### Parameters
+
+<ParamField path="to" type="string" required>
+  The phone number, SIP address, or Client identifier to call. Phone numbers must be in E.164 format.
+</ParamField>
+
+<ParamField path="from" type="string" required>
+  The caller ID to use. Must be a Twilio number or a verified outgoing caller ID on your account. When `to` is a phone number, `from` must also be a phone number.
+</ParamField>
+
+<ParamField path="url" type="string">
+  The absolute URL Twilio fetches for TwiML instructions when the call connects. Mutually exclusive with `twiml` (if both are provided, `twiml` is ignored).
+</ParamField>
+
+<ParamField path="twiml" type="string">
+  Raw TwiML instructions as a string, up to 4000 characters. Twilio uses these directly without making an HTTP request. Ignored when `url` is also set.
+</ParamField>
+
+<ParamField path="status_callback" type="string">
+  A URL Twilio calls to report call progress events. Receives `completed` by default; use `status_callback_event` to request additional events.
+</ParamField>
+
+<ParamField path="status_callback_event" type="string[]">
+  Call progress events sent to `status_callback`. Can be any combination of `initiated`, `ringing`, `answered`, `completed`.
+</ParamField>
+
+<ParamField path="record" type="boolean">
+  Set to `true` to record the call. The recording URL is sent to `status_callback`. Default is `false`.
+</ParamField>
+
+<ParamField path="recording_channels" type="string">
+  Number of recording channels. `"mono"` (default) records both legs in one channel; `"dual"` records each leg separately.
+</ParamField>
+
+<ParamField path="timeout" type="string">
+  Seconds to allow the phone to ring before assuming no answer. Default is `60`; maximum is `600`.
+</ParamField>
+
+<ParamField path="machine_detection" type="string">
+  Enable answering machine detection. Set to `"Enable"` to return `AnsweredBy` immediately upon identification, or `"DetectMessageEnd"` to wait for the beep before continuing.
+</ParamField>
+
+<ParamField path="send_digits" type="string">
+  DTMF digits to send after the call connects. Use `w` for a 0.5 s pause, `W` for 1 s. Maximum 32 characters. Ignored when `machine_detection` is set.
+</ParamField>
+
+<ParamField path="time_limit" type="string">
+  Maximum call duration in seconds.
+</ParamField>
+
+<ParamField path="application_sid" type="string">
+  SID of a TwiML Application that handles the call. When set, `url`, `fallback_url`, and `status_callback` are ignored (the application's settings apply).
+</ParamField>
+
+<ParamField path="caller_id" type="string">
+  Override the caller ID displayed to the recipient. Must be a verified number on your account.
+</ParamField>
+
+<ParamField path="byoc" type="string">
+  SID of a BYOC trunk to route the call through. Only meaningful when `to` is a phone number.
+</ParamField>
+
+---
+
+## calls(sid).fetch
+
+Retrieve a single call record.
+
+```ruby
+call = client.calls('CAxxx').fetch
+puts call.status
+puts call.duration
+```
+
+Returns a `CallInstance`.
+
+---
+
+## calls(sid).update
+
+Modify a live or queued call. Common uses: terminate a call, redirect it to new TwiML, or cancel a queued call.
+
+```ruby
+# Terminate a live call
+client.calls('CAxxx').update(status: 'completed')
+
+# Redirect to different TwiML
+client.calls('CAxxx').update(url: 'https://example.com/new-twiml')
+
+# Provide inline TwiML
+client.calls('CAxxx').update(twiml: '<Response><Hangup/></Response>')
+```
+
+### Parameters
+
+<ParamField path="status" type="string">
+  Set to `"completed"` to terminate the call, or `"canceled"` to cancel a queued call before it connects.
+</ParamField>
+
+<ParamField path="url" type="string">
+  A new TwiML URL for Twilio to fetch. Redirects a live call immediately.
+</ParamField>
+
+<ParamField path="twiml" type="string">
+  Inline TwiML to redirect the call to. Mutually exclusive with `url`.
+</ParamField>
+
+<ParamField path="method" type="string">
+  HTTP method (`GET` or `POST`) used to request the new `url`. Default is `POST`.
+</ParamField>
+
+<ParamField path="fallback_url" type="string">
+  URL Twilio calls if fetching `url` fails.
+</ParamField>
+
+<ParamField path="status_callback" type="string">
+  Override the status callback URL for this call.
+</ParamField>
+
+<ParamField path="time_limit" type="string">
+  Update the maximum duration of the call in seconds.
+</ParamField>
+
+---
+
+## calls(sid).delete
+
+Delete a completed call record.
+
+```ruby
+client.calls('CAxxx').delete
+# => true
+```
+
+<Warning>
+Only completed, failed, busy, or no-answer calls can be deleted. You cannot delete an in-progress call.
+</Warning>
+
+---
+
+## calls.list
+
+List call records with optional filters. Loads matching records into an array up to `limit`.
+
+```ruby
+calls = client.calls.list(
+  to:         '+15558675309',
+  from:       '+15017122661',
+  status:     'completed',
+  start_time: Time.parse('2024-01-01'),
+  limit:      50
+)
+
+calls.each { |c| puts "#{c.sid}: #{c.duration}s" }
+```
+
+### Parameters
+
+<ParamField path="to" type="string">
+  Filter calls made to this phone number, SIP address, Client identifier, or SIM SID.
+</ParamField>
+
+<ParamField path="from" type="string">
+  Filter calls made from this phone number, SIP address, Client identifier, or SIM SID.
+</ParamField>
+
+<ParamField path="status" type="string">
+  Filter by call status. Values: `queued`, `ringing`, `in-progress`, `canceled`, `completed`, `failed`, `busy`, `no-answer`.
+</ParamField>
+
+<ParamField path="start_time" type="time">
+  Filter calls that started on this exact date (`YYYY-MM-DD` UTC).
+</ParamField>
+
+<ParamField path="start_time_before" type="time">
+  Filter calls that started before this date.
+</ParamField>
+
+<ParamField path="start_time_after" type="time">
+  Filter calls that started on or after this date.
+</ParamField>
+
+<ParamField path="end_time" type="time">
+  Filter calls that ended on this exact date.
+</ParamField>
+
+<ParamField path="parent_call_sid" type="string">
+  Filter for calls spawned by this parent call SID.
+</ParamField>
+
+<ParamField path="limit" type="integer">
+  Maximum number of records to return.
+</ParamField>
+
+---
+
+## CallInstance response fields
+
+<ResponseField name="sid" type="string">
+  Unique identifier of the call (`CAxxx`).
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current call status: `queued`, `ringing`, `in-progress`, `canceled`, `completed`, `failed`, `busy`, or `no-answer`.
+</ResponseField>
+
+<ResponseField name="direction" type="string">
+  `inbound`, `outbound-api`, or `outbound-dial`.
+</ResponseField>
+
+<ResponseField name="from" type="string">
+  The originating phone number, SIP address, or Client identifier.
+</ResponseField>
+
+<ResponseField name="to" type="string">
+  The destination phone number, SIP address, or Client identifier.
+</ResponseField>
+
+<ResponseField name="duration" type="string">
+  Call length in seconds. Empty for incomplete calls.
+</ResponseField>
+
+<ResponseField name="price" type="string">
+  Cost of the call in the account currency. Populated after completion.
+</ResponseField>
+
+<ResponseField name="price_unit" type="string">
+  ISO 4217 currency code for `price` (e.g. `"USD"`).
+</ResponseField>
+
+<ResponseField name="answered_by" type="string">
+  `"human"` or `"machine"` when answering machine detection was used. Empty otherwise.
+</ResponseField>
+
+<ResponseField name="start_time" type="time">
+  RFC 2822 UTC timestamp when the call was dialed.
+</ResponseField>
+
+<ResponseField name="end_time" type="time">
+  RFC 2822 UTC timestamp when the call ended.
+</ResponseField>
+
+<ResponseField name="date_created" type="time">
+  RFC 2822 UTC timestamp when the record was created.
+</ResponseField>
+
+<ResponseField name="date_updated" type="time">
+  RFC 2822 UTC timestamp when the record was last modified.
+</ResponseField>
+
+<ResponseField name="parent_call_sid" type="string">
+  SID of the call that spawned this leg, if any.
+</ResponseField>

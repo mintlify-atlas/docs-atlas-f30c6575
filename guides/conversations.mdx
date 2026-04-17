@@ -1,0 +1,146 @@
+---
+title: "Twilio Conversations with twilio-ruby"
+description: "Create multi-channel conversation threads, add SMS and chat participants, and send messages using twilio-ruby's Conversations REST API client."
+---
+
+Twilio Conversations lets you build multi-party, multi-channel messaging threads that can include SMS, WhatsApp, MMS, and in-app chat participants in a single thread. The `twilio-ruby` SDK exposes the Conversations API under `client.conversations.v1`.
+
+## Prerequisites
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+## Create a conversation
+
+A conversation is the container for participants and messages. `friendly_name` is optional but useful for debugging.
+
+```ruby
+conversation = client.conversations.v1.conversations.create(
+  friendly_name: 'Support Chat'
+)
+
+puts conversation.sid           # CH...
+puts conversation.friendly_name # Support Chat
+puts conversation.state         # active
+```
+
+You can also set an auto-close timer using ISO 8601 duration strings:
+
+```ruby
+conversation = client.conversations.v1.conversations.create(
+  friendly_name:   'Timed Support Chat',
+  timers_inactive: 'PT1H',   # close after 1 hour of inactivity
+  timers_closed:   'P1D'     # hard-close after 1 day
+)
+```
+
+## Add a participant
+
+There are two kinds of participants: SDK users (identified by `identity`) and SMS/WhatsApp participants (identified by a phone number binding).
+
+### Add an SDK participant
+
+```ruby
+participant = client.conversations.v1
+                    .conversations(conversation.sid)
+                    .participants
+                    .create(identity: 'alice')
+
+puts participant.sid
+```
+
+### Add an SMS participant
+
+For SMS participants, supply `messaging_binding_address` (the customer's number) and `messaging_binding_proxy_address` (your Twilio number).
+
+```ruby
+participant = client.conversations.v1
+                    .conversations(conversation.sid)
+                    .participants
+                    .create(
+                      messaging_binding_address:       '+16105557069',
+                      messaging_binding_proxy_address: '+14159341234'
+                    )
+
+puts participant.sid
+```
+
+<Note>
+  The proxy address must be a Twilio number already assigned to a Messaging Service or directly to your account.
+</Note>
+
+## Send a message to a conversation
+
+```ruby
+message = client.conversations.v1
+                .conversations(conversation.sid)
+                .messages
+                .create(
+                  author: 'system',
+                  body:   'Welcome to support chat!'
+                )
+
+puts message.sid   # IM...
+puts message.index # position in thread
+```
+
+Omit `author` to default to `system`. Any identity in the conversation can be used as the author.
+
+## List conversations
+
+```ruby
+client.conversations.v1.conversations.list(limit: 20).each do |conv|
+  puts "#{conv.sid} #{conv.friendly_name} #{conv.state}"
+end
+```
+
+## List messages in a conversation
+
+```ruby
+client.conversations.v1
+      .conversations(conversation.sid)
+      .messages
+      .list(limit: 50)
+      .each do |msg|
+        puts "#{msg.index} #{msg.author}: #{msg.body}"
+      end
+```
+
+## Fetch and update a conversation
+
+```ruby
+# Fetch
+conv = client.conversations.v1.conversations(conversation.sid).fetch
+puts conv.state
+
+# Update friendly name or state
+client.conversations.v1
+      .conversations(conversation.sid)
+      .update(
+        friendly_name: 'Resolved Support Chat',
+        state:         'closed'
+      )
+```
+
+Valid state values are `active`, `inactive`, and `closed`.
+
+<Tip>
+  Closing a conversation prevents new messages from being sent but preserves the full message history for retrieval.
+</Tip>
+
+## Error handling
+
+```ruby
+begin
+  client.conversations.v1.conversations.create(friendly_name: 'Test')
+rescue Twilio::REST::RestError => e
+  puts e.message
+  puts e.code
+end
+```

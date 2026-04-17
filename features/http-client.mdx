@@ -1,0 +1,246 @@
+---
+title: "Customize the twilio-ruby HTTP client"
+description: "Configure the Faraday-based HTTP client in twilio-ruby — swap adapters, add middleware, set timeouts, and implement a custom HTTP client."
+---
+
+`twilio-ruby` uses [Faraday](https://github.com/lostisland/faraday) as its HTTP layer. Every API call the `Twilio::REST::Client` makes goes through a `Twilio::HTTP::Client` instance, which builds a Faraday connection, sends the request, and stores the raw response for debugging. Because the HTTP client is a plain Ruby object, you can reconfigure it at runtime, swap its underlying adapter, inject middleware, or replace it entirely with your own implementation. This page covers each of those options.
+
+## Default HTTP client
+
+When you create a `Twilio::REST::Client`, a `Twilio::HTTP::Client` is constructed automatically. You access it via the `http_client` attribute:
+
+```ruby
+require 'twilio-ruby'
+
+@client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+
+puts @client.http_client.class
+# => Twilio::HTTP::Client
+```
+
+The default adapter is `Faraday.default_adapter`, which resolves to `net_http` unless you have configured Faraday globally.
+
+## Swapping the adapter
+
+Set `adapter` to any Faraday-supported adapter symbol. The adapter change takes effect on the next request.
+
+```ruby
+# Use Typhoeus for parallel requests
+@client.http_client.adapter = :typhoeus
+
+# Use Net::HTTP::Persistent for connection pooling
+@client.http_client.adapter = :net_http_persistent
+```
+
+<Note>
+You must add the corresponding gem to your `Gemfile` before using a non-default adapter. For example, `:typhoeus` requires `gem 'typhoeus'`.
+</Note>
+
+## Adding middleware with configure_connection
+
+`configure_connection` stores a block that is yielded the Faraday builder object each time a new connection is created. Use it to add request or response middleware.
+
+```ruby
+@client.http_client.configure_connection do |faraday|
+  faraday.use SomeLoggingMiddleware
+end
+```
+
+You can call `configure_connection` multiple times; each block is run in the order it was registered.
+
+```ruby
+@client.http_client.configure_connection do |faraday|
+  faraday.use Faraday::Response::Logger
+end
+
+@client.http_client.configure_connection do |faraday|
+  faraday.use MyRetryMiddleware, max: 3
+end
+```
+
+## Setting timeouts
+
+Pass `timeout:` to the `Twilio::HTTP::Client` constructor to set the default open and read timeout (in seconds) for every request:
+
+```ruby
+http = Twilio::HTTP::Client.new(timeout: 30)
+
+@client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN'],
+  nil,          # account SID override (nil uses first argument)
+  nil,          # region
+  http          # custom http_client
+)
+```
+
+The timeout applies to both `open_timeout` and `timeout` on the Faraday options object. You can also set a per-request timeout when calling individual API methods; a per-request timeout overrides the client-level default.
+
+## Reading last_response for debug info
+
+After every API call, `last_request` and `last_response` are updated on the HTTP client:
+
+```ruby
+@message = @client.messages.create(
+  to:   '+14158675309',
+  from: '+14258675310',
+  body: 'Ahoy!'
+)
+
+puts @client.http_client.last_response.status_code
+# => 201
+
+puts @client.http_client.last_request.url
+# => /2010-04-01/Accounts/AC.../Messages.json
+```
+
+`last_response` is a `Twilio::Response` object with `status_code` and `body`. `last_request` is a `Twilio::Request` object with `host`, `port`, `method`, `url`, `params`, `data`, and `headers`.
+
+<Tip>
+Use `last_response` together with debug logging to trace unexpected API errors without modifying Twilio's internal request flow.
+</Tip>
+
+## Proxy support
+
+The built-in HTTP client accepts proxy settings in its constructor:
+
+```ruby
+http = Twilio::HTTP::Client.new(
+  'http',          # proxy protocol
+  '127.0.0.1',    # proxy host
+  8888,            # proxy port
+  'proxy_user',    # optional username
+  'proxy_pass'     # optional password
+)
+
+@client = Twilio::REST::Client.new(account_sid, auth_token, nil, nil, http)
+```
+
+## Implementing a custom HTTP client
+
+For advanced scenarios — proxy servers, mock responses in tests, custom authentication headers — you can write your own HTTP client class and pass it to `Twilio::REST::Client`. Your class must implement a `request` method with this signature:
+
+```ruby
+def request(host, port, method, url, params, data, headers, auth, timeout)
+  # return a Twilio::Response instance
+end
+```
+
+Here is a minimal custom client built on top of Faraday:
+
+```ruby
+require 'faraday'
+require 'twilio-ruby'
+
+class MyHttpClient
+  attr_accessor :adapter
+  attr_reader :timeout, :last_response, :last_request
+
+  def initialize(proxy_prot = nil, proxy_addr = nil, proxy_port = nil, timeout: nil)
+    @proxy_prot = proxy_prot
+    @proxy_addr = proxy_addr
+    @proxy_port = proxy_port
+    @timeout    = timeout
+    @adapter    = Faraday.default_adapter
+  end
+
+  def _request(request)
+    @connection = Faraday.new(url: "#{request.host}:#{request.port}", ssl: { verify: true }) do |f|
+      f.options.params_encoder = Faraday::FlatParamsEncoder
+      f.request :url_encoded
+      f.adapter @adapter
+      f.headers = request.headers
+      f.basic_auth(request.auth[0], request.auth[1])
+      f.proxy = "#{@proxy_prot}://#{@proxy_addr}:#{@proxy_port}" if @proxy_addr
+      f.options.open_timeout = request.timeout || @timeout
+      f.options.timeout      = request.timeout || @timeout
+    end
+
+    @last_request  = request
+    @last_response = nil
+
+    response = @connection.send(
+      request.method.downcase.to_sym,
+      request.url,
+      request.method == 'GET' ? request.params : request.data
+    )
+
+    object = if response.body && !response.body.empty?
+               response.body
+             elsif response.status == 400
+               { message: 'Bad request', code: 400 }.to_json
+             end
+
+    twilio_response  = Twilio::Response.new(response.status, object, headers: response.headers)
+    @last_response   = twilio_response
+    twilio_response
+  end
+
+  def request(host, port, method, url, params = {}, data = {}, headers = {}, auth = nil, timeout = nil)
+    req = Twilio::Request.new(host, port, method, url, params, data, headers, auth, timeout)
+    _request(req)
+  end
+end
+```
+
+Pass an instance to `Twilio::REST::Client` as the fifth argument:
+
+```ruby
+my_http = MyHttpClient.new(
+  ENV['PROXY_PROTOCOL'],
+  ENV['PROXY_ADDRESS'],
+  ENV['PROXY_PORT'].to_i
+)
+
+@client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN'],
+  nil,
+  nil,
+  my_http
+)
+
+message = @client.messages.create(
+  to:   '+15558675310',
+  from: '+15017122661',
+  body: 'Hello via custom client!'
+)
+
+puts message.sid
+```
+
+<AccordionGroup>
+  <Accordion title="Use cases for a custom HTTP client">
+    **Proxy servers**: Route all Twilio API requests through a corporate or testing proxy.
+
+    **Test mocking**: Return canned `Twilio::Response` objects without touching the network. Useful for unit and integration tests.
+
+    **Custom headers**: Inject authorization or tracing headers required by upstream infrastructure.
+
+    **Alternative HTTP libraries**: Replace Faraday entirely with `Net::HTTP`, `HTTParty`, or another library.
+  </Accordion>
+  <Accordion title="Mock client for tests">
+
+```ruby
+class MockHttpClient
+  attr_reader :last_request, :last_response
+
+  def request(host, port, method, url, params = {}, data = {}, headers = {}, auth = nil, timeout = nil)
+    @last_request  = Twilio::Request.new(host, port, method, url, params, data, headers, auth, timeout)
+    body           = { sid: 'SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', status: 'queued' }.to_json
+    @last_response = Twilio::Response.new(201, body, headers: { 'Content-Type' => 'application/json' })
+  end
+end
+
+# In your test:
+mock_http = MockHttpClient.new
+client    = Twilio::REST::Client.new('ACxxx', 'token', nil, nil, mock_http)
+message   = client.messages.create(to: '+15558675310', from: '+15017122661', body: 'test')
+puts message.sid  # => SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+  </Accordion>
+</AccordionGroup>

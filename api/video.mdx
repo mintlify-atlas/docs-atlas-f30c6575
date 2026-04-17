@@ -1,0 +1,223 @@
+---
+title: "Video REST API reference"
+description: "Reference for client.video.v1.rooms in twilio-ruby — create rooms, fetch and complete them, list participants, and access recordings programmatically."
+---
+
+`client.video.v1.rooms` is the entry point for Twilio Programmable Video. A Room is a virtual space where participants connect, publish tracks, and subscribe to each other. The REST API lets you create and configure rooms, update their status, list participants, and access recordings.
+
+## rooms.create
+
+Create a new Video Room. If a room with the given `unique_name` already exists and is `in-progress`, the existing room is returned instead of creating a new one.
+
+```ruby
+room = client.video.v1.rooms.create(
+  unique_name:                  'daily-standup',
+  type:                         'group',
+  max_participants:             10,
+  record_participants_on_connect: true,
+  status_callback:              'https://example.com/room-events'
+)
+
+puts room.sid         # => "RMxxx"
+puts room.status      # => "in-progress"
+puts room.unique_name # => "daily-standup"
+```
+
+### Parameters
+
+<ParamField path="unique_name" type="string">
+  An application-defined string that uniquely identifies the room. SDK clients can connect using this name instead of the SID. Unique among `in-progress` rooms.
+</ParamField>
+
+<ParamField path="type" type="string">
+  The room topology. See room types below.
+</ParamField>
+
+<ParamField path="max_participants" type="string">
+  Maximum number of concurrent connected participants. Maximum allowed value is `50`.
+</ParamField>
+
+<ParamField path="record_participants_on_connect" type="boolean">
+  When `true`, recording begins automatically when each participant connects.
+</ParamField>
+
+<ParamField path="transcribe_participants_on_connect" type="boolean">
+  When `true`, transcription begins automatically when each participant connects. Default settings apply unless `transcriptions_configuration` is provided.
+</ParamField>
+
+<ParamField path="status_callback" type="string">
+  URL Twilio calls with room events. See the Status Callbacks documentation for the full list of events.
+</ParamField>
+
+<ParamField path="status_callback_method" type="string">
+  HTTP method for `status_callback`. Can be `POST` (default) or `GET`.
+</ParamField>
+
+<ParamField path="video_codecs" type="string[]">
+  Supported video codecs for published tracks. Can be `VP8` and/or `H264`.
+</ParamField>
+
+<ParamField path="media_region" type="string">
+  Region for the room's media server. See the Twilio IP Addresses documentation for available regions.
+</ParamField>
+
+<ParamField path="audio_only" type="boolean">
+  When `true`, participants can only publish audio tracks. No video is permitted.
+</ParamField>
+
+<ParamField path="max_participant_duration" type="string">
+  Maximum seconds a participant can remain connected. Maximum `86400` (24 hours). Default `14400` (4 hours).
+</ParamField>
+
+<ParamField path="empty_room_timeout" type="string">
+  Minutes the room stays active after the last participant leaves. Range: `1`–`60`.
+</ParamField>
+
+<ParamField path="unused_room_timeout" type="string">
+  Minutes the room stays active if nobody joins after creation. Range: `1`–`60`.
+</ParamField>
+
+<ParamField path="recording_rules" type="object">
+  A collection of Recording Rules describing which tracks to include or exclude from recordings.
+</ParamField>
+
+---
+
+## rooms(sid).fetch
+
+Retrieve a room by SID or `unique_name`.
+
+```ruby
+room = client.video.v1.rooms('RMxxx').fetch
+# or by unique name:
+room = client.video.v1.rooms('daily-standup').fetch
+
+puts room.status
+puts room.duration
+```
+
+---
+
+## rooms(sid).update
+
+Update a room's status. The primary use case is ending a room by setting `status` to `completed`.
+
+```ruby
+client.video.v1.rooms('RMxxx').update(status: 'completed')
+```
+
+### Parameters
+
+<ParamField path="status" type="string" required>
+  Set to `"completed"` to end the room and disconnect all participants. This is the only value accepted.
+</ParamField>
+
+---
+
+## rooms(sid).participants.list
+
+List all participants who connected to a room.
+
+```ruby
+participants = client.video.v1.rooms('RMxxx').participants.list
+
+participants.each do |p|
+  puts "#{p.identity}: #{p.status}"
+end
+```
+
+Participants include both currently connected and previously connected members. Filter with `status: 'connected'` to see only active participants.
+
+---
+
+## rooms.list
+
+List Video Rooms with optional filters.
+
+```ruby
+rooms = client.video.v1.rooms.list(
+  status:      'in-progress',
+  unique_name: 'daily-standup',
+  limit:       20
+)
+
+rooms.each { |r| puts "#{r.unique_name} (#{r.sid})" }
+```
+
+### Parameters
+
+<ParamField path="status" type="string">
+  Filter rooms by status. Values: `in-progress`, `completed`.
+</ParamField>
+
+<ParamField path="unique_name" type="string">
+  Filter rooms by their `unique_name`.
+</ParamField>
+
+<ParamField path="date_created_after" type="time">
+  Return only rooms created on or after this date (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField path="date_created_before" type="time">
+  Return only rooms created before this date (`YYYY-MM-DD`).
+</ParamField>
+
+<ParamField path="limit" type="integer">
+  Maximum number of records to return.
+</ParamField>
+
+---
+
+## Room types
+
+| Type | Description |
+|---|---|
+| `go` | Lightweight peer-to-peer room. Up to 2 participants. No recording. Free tier available. |
+| `peer-to-peer` | Browser-based peer-to-peer. Up to 10 participants. No media server routing. |
+| `group` | Full-featured multi-party room via Twilio media servers. Up to 50 participants. Supports recording. |
+
+<Note>
+`group-small` is a legacy alias for small group rooms. New rooms should use `group` with an explicit `max_participants` value instead.
+</Note>
+
+## RoomInstance response fields
+
+<ResponseField name="sid" type="string">
+  Unique identifier of the room (`RMxxx`).
+</ResponseField>
+
+<ResponseField name="unique_name" type="string">
+  Application-defined name for the room.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current room status: `in-progress` or `completed`.
+</ResponseField>
+
+<ResponseField name="type" type="string">
+  Room topology type: `go`, `peer-to-peer`, or `group`.
+</ResponseField>
+
+<ResponseField name="max_participants" type="integer">
+  Maximum number of concurrent participants allowed.
+</ResponseField>
+
+<ResponseField name="duration" type="integer">
+  Duration of the room in seconds. Populated after the room completes.
+</ResponseField>
+
+<ResponseField name="date_created" type="time">
+  RFC 2822 timestamp when the room was created.
+</ResponseField>
+
+<ResponseField name="date_updated" type="time">
+  RFC 2822 timestamp when the room was last updated.
+</ResponseField>
+
+<ResponseField name="end_time" type="time">
+  Timestamp when the room was completed. `nil` if the room is still active.
+</ResponseField>
+
+<ResponseField name="record_participants_on_connect" type="boolean">
+  Whether automatic recording is enabled for participants.
+</ResponseField>

@@ -1,0 +1,123 @@
+---
+title: "Authenticate with twilio-ruby"
+description: "Learn how to authenticate twilio-ruby using Account SID and Auth Token, API Keys, environment variables, and global configuration."
+---
+
+Every request the `twilio-ruby` client makes to the Twilio API must be authenticated. The library supports two main credential types—Account SID + Auth Token for quick setup, and API Keys for production applications where you want tighter access control. You can supply credentials directly to the client constructor, read them from environment variables, or set them once via a global `Twilio.configure` block so every client you create in the process inherits them automatically.
+
+## Account SID and Auth Token
+
+The simplest way to authenticate is with your Account SID and Auth Token, both available from the [Twilio Console](https://console.twilio.com).
+
+```ruby
+require 'twilio-ruby'
+
+account_sid = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+auth_token  = 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'
+
+client = Twilio::REST::Client.new(account_sid, auth_token)
+```
+
+<Warning>
+Never hardcode credentials in source files you intend to commit or deploy. Use environment variables instead (see below).
+</Warning>
+
+## API Key authentication
+
+API Keys let you scope access and rotate credentials without changing your Account Auth Token. Create a key pair in the Twilio Console under **Account → API Keys**, then pass the key SID and secret along with your Account SID as the third argument.
+
+```ruby
+require 'twilio-ruby'
+
+account_sid    = 'ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+api_key_sid    = 'SKzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz'
+api_key_secret = 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'
+
+client = Twilio::REST::Client.new(api_key_sid, api_key_secret, account_sid)
+```
+
+<Tip>
+API Keys are the recommended approach for production applications. If a key is compromised, you can revoke it without affecting other integrations that use different keys.
+</Tip>
+
+## Using environment variables
+
+Store credentials outside your codebase by reading them from environment variables. The client constructor checks `Twilio.account_sid` and `Twilio.auth_token`, which in turn read from the global configuration—but the simplest pattern is to read the variables yourself:
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+Set the variables in your shell before running your application:
+
+```bash
+export TWILIO_ACCOUNT_SID="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+export TWILIO_AUTH_TOKEN="yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+```
+
+<Note>
+In production, use your platform's secret management system (e.g., Heroku config vars, AWS Secrets Manager) rather than exporting variables in a shell script.
+</Note>
+
+## Global configuration
+
+If you create multiple clients throughout your application, use `Twilio.configure` to set credentials once. Any `Twilio::REST::Client` instantiated without explicit arguments will pick up the global values.
+
+```ruby
+require 'twilio-ruby'
+
+Twilio.configure do |config|
+  config.account_sid = ENV['TWILIO_ACCOUNT_SID']
+  config.auth_token  = ENV['TWILIO_AUTH_TOKEN']
+end
+
+# No arguments needed — credentials come from global config
+client = Twilio::REST::Client.new
+```
+
+The `Twilio::Util::Configuration` object exposes these settable attributes:
+
+| Attribute     | Description                                      |
+| ------------- | ------------------------------------------------ |
+| `account_sid` | Your Twilio Account SID                          |
+| `auth_token`  | Your Twilio Auth Token                           |
+| `http_client` | Custom HTTP client instance (optional)           |
+| `region`      | Target Twilio region, e.g. `'au1'` (optional)   |
+| `edge`        | Target Twilio edge location (optional)           |
+| `logger`      | Ruby `Logger` instance for debug output (optional) |
+
+## Region and edge routing
+
+Twilio's [Global Infrastructure](https://www.twilio.com/docs/global-infrastructure) lets you pin API requests to a specific region and edge to reduce latency or satisfy data-residency requirements. Pass the region as the fourth argument to the constructor, then set the edge on the client object:
+
+```ruby
+require 'twilio-ruby'
+
+# Specify region at construction time, then set edge
+client = Twilio::REST::Client.new(account_sid, auth_token, nil, 'au1')
+client.edge = 'sydney'
+```
+
+You can also set both properties after construction:
+
+```ruby
+client = Twilio::REST::Client.new(account_sid, auth_token)
+client.region = 'au1'
+client.edge   = 'sydney'
+```
+
+With these settings the request hostname changes from `api.twilio.com` to `api.sydney.au1.twilio.com`.
+
+<CardGroup cols={2}>
+  <Card title="Making API requests" icon="paper-plane" href="/usage/making-requests">
+    Send messages, make calls, and work with resources.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/usage/error-handling">
+    Catch and handle Twilio API errors gracefully.
+  </Card>
+</CardGroup>

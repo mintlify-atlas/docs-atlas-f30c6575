@@ -1,0 +1,99 @@
+---
+title: "Global Twilio configuration in Ruby"
+description: "Configure twilio-ruby globally using Twilio.configure — set account SID, auth token, HTTP client, logger, region, and edge once for your app."
+---
+
+Instead of passing credentials to every `Twilio::REST::Client.new` call, you can set them once using `Twilio.configure`. The `Twilio::Util::Configuration` object stores your settings and the `ClientBase` constructor reads from it automatically when a parameter is `nil`. This pattern is well-suited to Rails initializers, Sinatra configuration blocks, or any application-level boot sequence.
+
+## Configure block
+
+```ruby
+Twilio.configure do |config|
+  config.account_sid = ENV['TWILIO_ACCOUNT_SID']
+  config.auth_token  = ENV['TWILIO_AUTH_TOKEN']
+end
+```
+
+After calling `Twilio.configure`, instantiating a client without arguments uses the stored values:
+
+```ruby
+client = Twilio::REST::Client.new
+# equivalent to:
+# Twilio::REST::Client.new(Twilio.account_sid, Twilio.auth_token)
+```
+
+## Configuration attributes
+
+`Twilio::Util::Configuration` exposes the following `attr_accessor` fields:
+
+<ParamField path="account_sid" type="string">
+  Your Twilio Account SID (`ACxxx`). Used as both the HTTP Basic Auth username and the default operating account SID for all client instances that do not supply their own.
+</ParamField>
+
+<ParamField path="auth_token" type="string">
+  Your Twilio Auth Token. Used as the HTTP Basic Auth password.
+</ParamField>
+
+<ParamField path="region" type="string">
+  Target a specific Twilio region, for example `"us1"`. Passed to `ClientBase` and used when rewriting request hostnames.
+</ParamField>
+
+<ParamField path="edge" type="string">
+  Target a specific Twilio edge location. When set alongside `region`, the SDK rewrites the hostname to `product.edge.region.twilio.com`.
+</ParamField>
+
+<ParamField path="http_client" type="object">
+  A custom HTTP client that replaces the default `Twilio::HTTP::Client`. Must implement the same `request` interface. Commonly used to inject a mock in tests.
+</ParamField>
+
+<ParamField path="logger" type="object">
+  A Logger-compatible object. When set, every client instance created without an explicit `logger` argument will use this logger to record request and response details at `debug` level.
+</ParamField>
+
+## Reading configuration values
+
+The `Twilio` module delegates `account_sid`, `auth_token`, `http_client`, `region`, `edge`, and `logger` directly to the configuration object:
+
+```ruby
+Twilio.account_sid  # => "ACxxx"
+Twilio.auth_token   # => "your_auth_token"
+Twilio.region       # => nil (unless set)
+Twilio.edge         # => nil (unless set)
+```
+
+## Full example with all options
+
+```ruby
+require 'logger'
+require 'twilio-ruby'
+
+Twilio.configure do |config|
+  config.account_sid = ENV['TWILIO_ACCOUNT_SID']
+  config.auth_token  = ENV['TWILIO_AUTH_TOKEN']
+  config.region      = 'us1'
+  config.edge        = 'sydney'
+  config.logger      = Logger.new($stdout)
+end
+
+# All clients created without arguments inherit the above settings.
+client = Twilio::REST::Client.new
+```
+
+<Tip>
+Store credentials in environment variables rather than committing them to source code. `ENV['TWILIO_ACCOUNT_SID']` and `ENV['TWILIO_AUTH_TOKEN']` are the conventional names.
+</Tip>
+
+## Per-client overrides
+
+Values set in `Twilio.configure` are defaults, not constraints. You can override any setting for a specific client by passing arguments explicitly:
+
+```ruby
+# Use a sub-account for this particular client
+sub_client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN'],
+  'ACsubaccountxxxxxxxxxxxxxxxxx'  # account_sid override
+)
+```
+
+Per-client values take precedence over global configuration for that instance only.

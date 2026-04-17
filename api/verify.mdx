@@ -1,0 +1,199 @@
+---
+title: "Verify REST API reference"
+description: "Reference for client.verify in twilio-ruby — create verification services, send OTPs, and check verification codes with the Twilio Verify API."
+---
+
+The Twilio Verify API provides a complete OTP workflow: create a Service to hold configuration, send a verification code to a user, then confirm the code they enter. `client.verify.v2.services` is the entry point for all Verify operations in twilio-ruby.
+
+## services.create
+
+Create a Verify Service. A Service holds your branding, code length, channel configuration, and rate limits. You create one Service per application (or per use case) and then reuse its SID.
+
+```ruby
+service = client.verify.v2.services.create(
+  friendly_name: 'My App Verification'
+)
+
+puts service.sid  # => "VAxxx"
+```
+
+### Parameters
+
+<ParamField path="friendly_name" type="string" required>
+  A descriptive name for the Service, up to 32 characters. This value should not contain PII.
+</ParamField>
+
+<ParamField path="code_length" type="string">
+  Length of generated verification codes. Must be between `4` and `10` inclusive. Default is `6`.
+</ParamField>
+
+<ParamField path="lookup_enabled" type="boolean">
+  When `true`, performs a carrier lookup on the destination number before sending each verification.
+</ParamField>
+
+<ParamField path="skip_sms_to_landlines" type="boolean">
+  When `true`, skips SMS verifications sent to landlines. Requires `lookup_enabled`.
+</ParamField>
+
+<ParamField path="dtmf_input_required" type="boolean">
+  When `true`, prompts the user to press a key before reading the verification code during a voice call.
+</ParamField>
+
+<ParamField path="do_not_share_warning_enabled" type="boolean">
+  When `true`, appends a security warning to SMS verification messages.
+</ParamField>
+
+<ParamField path="custom_code_enabled" type="boolean">
+  When `true`, allows passing a custom code in `verifications.create` instead of using a generated one.
+</ParamField>
+
+<ParamField path="default_template_sid" type="string">
+  SID of the default message template for SMS verifications. Overrides the built-in template globally for this Service.
+</ParamField>
+
+<ParamField path="totp_issuer" type="string">
+  Issuer label for TOTP URIs. Defaults to the Service's `friendly_name`.
+</ParamField>
+
+<ParamField path="totp_time_step" type="string">
+  Seconds between TOTP code rotations. Must be between `20` and `60`. Default is `30`.
+</ParamField>
+
+<ParamField path="totp_code_length" type="string">
+  Digits in generated TOTP codes. Must be between `3` and `8`. Default is `6`.
+</ParamField>
+
+---
+
+## verifications.create
+
+Send a verification code to a user. This starts the OTP flow for the given `to` address.
+
+```ruby
+verification = client.verify.v2
+  .services('VAservicesid')
+  .verifications
+  .create(to: '+15558675309', channel: 'sms')
+
+puts verification.status  # => "pending"
+```
+
+### Parameters
+
+<ParamField path="to" type="string" required>
+  The phone number or email address to verify. Phone numbers must be in E.164 format.
+</ParamField>
+
+<ParamField path="channel" type="string" required>
+  The delivery channel for the OTP. Options: `sms`, `call`, `email`, `whatsapp`, `sna`, `auto`.
+</ParamField>
+
+<ParamField path="locale" type="string">
+  Override the automatically detected locale for the verification message. Defaults to the country code of the `to` number.
+</ParamField>
+
+<ParamField path="custom_code" type="string">
+  A pre-generated code between 4 and 10 characters. Only valid when `custom_code_enabled` is `true` on the Service.
+</ParamField>
+
+<ParamField path="custom_friendly_name" type="string">
+  Override the Service's `friendly_name` in the verification message body for this specific request.
+</ParamField>
+
+<ParamField path="template_sid" type="string">
+  Override the default template for this verification. Applies to `sms` and `call` channels only.
+</ParamField>
+
+<ParamField path="template_custom_substitutions" type="string">
+  JSON string of key-value pairs substituted into the template's variable placeholders.
+</ParamField>
+
+<ParamField path="device_ip" type="string">
+  Strongly encouraged when `channel` is `auto`. A valid IPv4 or IPv6 address of the client device used for risk-based channel selection.
+</ParamField>
+
+<ParamField path="rate_limits" type="object">
+  Custom key-value pairs for programmable rate limits defined on the Service.
+</ParamField>
+
+<ParamField path="amount" type="string">
+  PSD2 transaction amount. Requires `psd2_enabled` on the Service.
+</ParamField>
+
+<ParamField path="payee" type="string">
+  PSD2 payee name. Requires `psd2_enabled` on the Service.
+</ParamField>
+
+---
+
+## verification_checks.create
+
+Validate the code entered by the user. A single successful check sets the verification's status to `approved`.
+
+```ruby
+check = client.verify.v2
+  .services('VAservicesid')
+  .verification_checks
+  .create(to: '+15558675309', code: '123456')
+
+if check.status == 'approved'
+  puts 'Phone number verified!'
+end
+```
+
+### Parameters
+
+<ParamField path="to" type="string">
+  The phone number or email that was verified. Either `to` or `verification_sid` must be provided.
+</ParamField>
+
+<ParamField path="code" type="string">
+  The 4–10 character code entered by the user.
+</ParamField>
+
+<ParamField path="verification_sid" type="string">
+  SID of the Verification resource to check. Alternative to `to`.
+</ParamField>
+
+<ParamField path="amount" type="string">
+  PSD2 transaction amount for verification. Must match the value used when creating the verification.
+</ParamField>
+
+<ParamField path="payee" type="string">
+  PSD2 payee for verification. Must match the value used when creating the verification.
+</ParamField>
+
+<ParamField path="sna_client_token" type="string">
+  SNA client token returned from the SNA URL invocation. Required when using the `sna` channel with `enable_sna_client_token: true`.
+</ParamField>
+
+---
+
+## Verification status values
+
+| Status | Meaning |
+|---|---|
+| `pending` | The verification code was sent and is awaiting confirmation. |
+| `approved` | The user submitted the correct code. The verification is complete. |
+| `canceled` | The verification was explicitly canceled before approval. |
+| `max_attempts_reached` | The user submitted the wrong code too many times. |
+
+<Warning>
+Each `VerificationCheck` attempt counts against the rate limits for the Service. After too many failed attempts, the verification moves to `max_attempts_reached` and a new verification must be initiated.
+</Warning>
+
+## Channel options
+
+| Channel | Description |
+|---|---|
+| `sms` | One-time code delivered via SMS. |
+| `call` | Code read aloud via a voice call. |
+| `email` | Code delivered to an email address. Requires email configuration on the Service. |
+| `whatsapp` | Code delivered via WhatsApp. Requires a Messaging Service with a WhatsApp sender. |
+| `totp` | Time-based one-time password via authenticator app. Requires factor setup. |
+| `sna` | Silent network authentication — verifies via carrier network without user interaction. |
+| `auto` | Twilio selects the best channel based on the destination and `device_ip`. |
+
+<Tip>
+Use `channel: 'auto'` with `device_ip` set for the best conversion rates. Twilio uses network intelligence to pick `sna`, `sms`, or `call` automatically.
+</Tip>

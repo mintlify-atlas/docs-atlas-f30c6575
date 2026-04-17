@@ -1,0 +1,138 @@
+---
+title: "Send SMS and MMS with twilio-ruby"
+description: "Send outbound SMS and MMS messages using twilio-ruby — with delivery status tracking, media attachments, and messaging service support."
+---
+
+The `twilio-ruby` library exposes SMS and MMS sending through `client.messages`, a resource that maps directly to the Twilio Messages REST API. Every call returns a `MessageInstance` you can inspect for the SID, status, and other metadata. The examples below use real parameter names from the SDK source.
+
+## Prerequisites
+
+Install the gem and set up your credentials:
+
+```ruby
+gem 'twilio-ruby', '~> 7.10.5'
+```
+
+<Warning>
+  Store credentials in environment variables, not in source code. Never commit `TWILIO_ACCOUNT_SID` or `TWILIO_AUTH_TOKEN` to version control.
+</Warning>
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+## Send a basic SMS
+
+<Steps>
+  <Step title="Create the message">
+    Pass `from`, `to`, and `body` to `client.messages.create`. The `from` number must be a Twilio phone number in your account.
+
+    ```ruby
+    message = client.messages.create(
+      from: '+14159341234',
+      to:   '+16105557069',
+      body: 'Hey there!'
+    )
+
+    puts message.sid    # SM...
+    puts message.status # queued
+    ```
+  </Step>
+
+  <Step title="Store the SID">
+    Save `message.sid` if you need to check delivery status later. The initial status is `queued`; it transitions to `sent` or `delivered` asynchronously.
+  </Step>
+</Steps>
+
+## Send an MMS with a media attachment
+
+Replace `body` with `media_url` (or include both) to send an MMS. The URL must be publicly accessible.
+
+```ruby
+message = client.messages.create(
+  from:      '+14159341234',
+  to:        '+16105557069',
+  media_url: 'https://example.com/image.png'
+)
+
+puts message.sid
+```
+
+<Note>
+  MMS is supported on US and Canadian numbers. Check Twilio's documentation for international MMS availability.
+</Note>
+
+## Use a Messaging Service SID
+
+Instead of specifying a `from` number, you can use a Messaging Service SID (`messaging_service_sid`). Twilio selects an appropriate sender from the service's pool.
+
+```ruby
+message = client.messages.create(
+  messaging_service_sid: 'MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+  to:                    '+16105557069',
+  body:                  'Hello from a Messaging Service!'
+)
+
+puts message.sid
+```
+
+<Tip>
+  Messaging Services support features like number pooling, sticky sender, and smart encoding. They are the recommended approach for high-volume sending.
+</Tip>
+
+## Fetch message status after send
+
+Use the message SID to fetch updated status from the API:
+
+```ruby
+sid = 'SMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+
+message = client.messages(sid).fetch
+
+puts message.status       # delivered, failed, undelivered, etc.
+puts message.error_code   # nil on success; numeric code on failure
+puts message.error_message
+```
+
+Possible status values include `queued`, `sending`, `sent`, `delivered`, `undelivered`, and `failed`.
+
+## List recent messages
+
+`client.messages.list` returns an array of `MessageInstance` objects. Use `limit` to cap the number of records fetched; the library handles pagination automatically.
+
+```ruby
+# Fetch the 20 most recent messages
+client.messages.list(limit: 20).each do |msg|
+  puts "#{msg.sid} #{msg.date_created} #{msg.status}"
+end
+```
+
+Filter by date or direction:
+
+```ruby
+client.messages.list(date_sent: '2024-01-01', limit: 50).each do |msg|
+  puts msg.body
+end
+```
+
+## Error handling
+
+The SDK raises `Twilio::REST::RestError` for 4xx and 5xx responses:
+
+```ruby
+begin
+  message = client.messages.create(
+    from: '+14159341234',
+    to:   '+16105557069',
+    body: 'Test'
+  )
+rescue Twilio::REST::RestError => e
+  puts e.message   # human-readable description
+  puts e.code      # Twilio error code integer
+end
+```

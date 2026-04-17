@@ -1,97 +1,76 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "twilio-ruby: Official Ruby SDK for Twilio"
+description: "The official Ruby gem for the Twilio API. Send SMS and MMS, make voice calls, generate TwiML, create JWT tokens, and validate Twilio webhooks in Ruby."
 ---
 
-## Setting up
+The twilio-ruby gem is the official Ruby helper library for the Twilio platform. It gives you a clean, idiomatic Ruby interface to the full Twilio REST API, lets you generate TwiML responses to control calls and messages, create JWT access tokens for client-side SDKs, and validate incoming webhook requests from Twilio.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Add twilio-ruby to your project with Bundler or gem install
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Send your first SMS in under 5 minutes
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Authentication" icon="key" href="/usage/authentication">
+    Authenticate with Account SID, Auth Token, or API Keys
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="API Reference" icon="code" href="/api/client">
+    Full reference for the REST client and all resources
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What you can build
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Send SMS & MMS" icon="message" href="/guides/sending-sms">
+    Send text messages and media to any phone number worldwide
+  </Card>
+  <Card title="Voice calls" icon="phone" href="/guides/making-calls">
+    Initiate outbound calls and control call flows with TwiML
+  </Card>
+  <Card title="Verify users" icon="shield-check" href="/guides/verify">
+    Phone number verification and two-factor authentication
+  </Card>
+  <Card title="Video rooms" icon="video" href="/guides/video">
+    Programmable video rooms for real-time communication
+  </Card>
+  <Card title="Conversations" icon="comments" href="/guides/conversations">
+    Multi-channel messaging threads across SMS, chat, and WhatsApp
+  </Card>
+  <Card title="TwiML generation" icon="file-code" href="/features/twiml">
+    Generate XML instructions to control Twilio voice and messaging
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Get started in minutes
 
-## Need inspiration?
+<Steps>
+  <Step title="Install the gem">
+    Add `gem 'twilio-ruby', '~> 7.10.5'` to your Gemfile and run `bundle install`.
+  </Step>
+  <Step title="Get your credentials">
+    Find your Account SID and Auth Token in the [Twilio Console](https://console.twilio.com).
+  </Step>
+  <Step title="Initialize the client">
+    ```ruby
+    require 'twilio-ruby'
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+    client = Twilio::REST::Client.new('ACxxxxx', 'your_auth_token')
+    ```
+  </Step>
+  <Step title="Make your first API call">
+    ```ruby
+    message = client.messages.create(
+      from: '+15005550006',
+      to: '+14155551234',
+      body: 'Hello from twilio-ruby!'
+    )
+    puts message.sid
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Store your credentials in environment variables — never hardcode them in source code. See [Authentication](/usage/authentication) for best practices.
+</Note>

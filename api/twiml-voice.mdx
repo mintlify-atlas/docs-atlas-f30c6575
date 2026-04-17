@@ -1,0 +1,485 @@
+---
+title: "TwiML VoiceResponse API reference"
+description: "Reference for Twilio::TwiML::VoiceResponse — all verbs, nested nouns, and attributes for controlling Twilio voice calls with Ruby."
+---
+
+`Twilio::TwiML::VoiceResponse` is the root object for building TwiML documents that control Twilio voice calls. You construct a response by instantiating the class, calling verb methods on it, and serializing the result to XML with `to_s`. Every method appends a child element to the document and accepts an optional block that yields the new element so you can nest further nouns inside it.
+
+## Constructor
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new
+# or with a block
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.say(message: 'Hello, world!')
+end
+```
+
+`VoiceResponse.new` accepts an optional block and yields `self`, so you can chain verb calls inline. It produces a `<Response>` root element.
+
+## Rendering
+
+```ruby
+response.to_s          # => full XML string with <?xml ...?> declaration
+response.to_xml        # alias for to_s
+response.to_s(false)   # omit the XML declaration
+```
+
+<Note>
+Twilio expects the `Content-Type: text/xml` header alongside the XML body. Return `response.to_s` directly from your webhook action.
+</Note>
+
+---
+
+## say
+
+Speak text to the caller using Twilio's text-to-speech engine.
+
+```ruby
+def say(message: nil, voice: nil, loop: nil, language: nil, **keyword_args)
+```
+
+```ruby
+response = Twilio::TwiML::VoiceResponse.new
+response.say(message: 'Hello! Please hold.', voice: 'alice', language: 'en-US')
+```
+
+<ParamField path="body.message" type="string">
+  The text Twilio reads aloud. Omit to use SSML child elements only.
+</ParamField>
+
+<ParamField path="body.voice" type="string">
+  TTS voice to use, for example `alice`, `man`, `woman`, or a Polly voice such as `Polly.Joanna`.
+</ParamField>
+
+<ParamField path="body.language" type="string">
+  BCP-47 language tag, for example `en-US`, `es-MX`, `fr-FR`.
+</ParamField>
+
+<ParamField path="body.loop" type="number">
+  Number of times to repeat the message. `0` loops indefinitely. Defaults to `1`.
+</ParamField>
+
+### SSML children
+
+`say` accepts a block that yields the `Say` noun, giving access to SSML sub-elements: `break`, `emphasis`, `lang`, `p`, `phoneme`, `prosody`, `s`, `say_as`, `sub`, and `w`.
+
+```ruby
+response.say(voice: 'Polly.Joanna') do |say|
+  say.p(words: 'Your confirmation code is:')
+  say.say_as('A1B2C3', interpretAs: 'characters')
+end
+```
+
+---
+
+## play
+
+Play an audio file for the caller.
+
+```ruby
+def play(url: nil, loop: nil, digits: nil, **keyword_args)
+```
+
+```ruby
+response.play(url: 'https://example.com/hold-music.mp3', loop: 3)
+```
+
+<ParamField path="body.url" type="string">
+  Public URL of the audio file to play (MP3, WAV, etc.).
+</ParamField>
+
+<ParamField path="body.loop" type="number">
+  Number of times to play the file. `0` loops indefinitely. Defaults to `1`.
+</ParamField>
+
+<ParamField path="body.digits" type="string">
+  DTMF tones to play without a URL, for example `'1234#'`. Useful for navigating IVRs.
+</ParamField>
+
+---
+
+## dial
+
+Connect the caller to another number or endpoint. Accepts a plain number string as `number:` or a block for nested nouns (`Client`, `Number`, `Conference`, `Queue`, `Sip`).
+
+```ruby
+def dial(
+  number: nil, action: nil, method: nil, timeout: nil,
+  hangup_on_star: nil, time_limit: nil, caller_id: nil,
+  record: nil, trim: nil,
+  recording_status_callback: nil, recording_status_callback_method: nil,
+  recording_status_callback_event: nil,
+  answer_on_bridge: nil, ring_tone: nil, recording_track: nil,
+  sequential: nil, refer_url: nil, refer_method: nil, events: nil,
+  **keyword_args
+)
+```
+
+```ruby
+# Dial a plain number
+response.dial(number: '+15558675309', timeout: 30, caller_id: '+15551234567')
+
+# Dial with a block to use nested nouns
+response.dial(action: '/call-status', record: 'record-from-answer') do |dial|
+  dial.number('+15558675309', send_digits: '1234')
+  dial.client(identity: 'jenny')
+end
+```
+
+<ParamField path="body.number" type="string">
+  E.164 phone number to dial directly without nested nouns.
+</ParamField>
+
+<ParamField path="body.action" type="string">
+  Webhook URL Twilio calls when the dialed party hangs up.
+</ParamField>
+
+<ParamField path="body.method" type="string">
+  HTTP method for the `action` URL. Defaults to `POST`.
+</ParamField>
+
+<ParamField path="body.timeout" type="number">
+  Seconds to wait for the called party to answer. Defaults to `30`.
+</ParamField>
+
+<ParamField path="body.caller_id" type="string">
+  Caller ID displayed to the called party. Must be a verified Twilio number or an outgoing caller ID.
+</ParamField>
+
+<ParamField path="body.record" type="string">
+  Recording behavior: `do-not-record`, `record-from-answer`, `record-from-ringing`, etc.
+</ParamField>
+
+<ParamField path="body.hangup_on_star" type="boolean">
+  Whether pressing `*` ends the call. Defaults to `false`.
+</ParamField>
+
+<ParamField path="body.time_limit" type="number">
+  Maximum duration in seconds for the dialed call.
+</ParamField>
+
+<ParamField path="body.sequential" type="boolean">
+  Dial nested nouns one at a time (sequential) instead of all at once (parallel). Defaults to `false`.
+</ParamField>
+
+### Nested nouns
+
+#### Number
+
+```ruby
+dial.number(
+  phone_number,              # positional — E.164 string
+  send_digits: nil,
+  url: nil, method: nil,
+  status_callback_event: nil, status_callback: nil, status_callback_method: nil,
+  byoc: nil,
+  machine_detection: nil, machine_detection_timeout: nil,
+  **keyword_args
+)
+```
+
+#### Client
+
+```ruby
+dial.client(
+  identity: nil, url: nil, method: nil,
+  status_callback_event: nil, status_callback: nil, status_callback_method: nil,
+  **keyword_args
+) { |client| client.identity('jenny') }
+```
+
+#### Conference
+
+```ruby
+dial.conference(
+  name,                        # positional — conference room name
+  muted: nil, beep: nil,
+  start_conference_on_enter: nil, end_conference_on_exit: nil,
+  wait_url: nil, wait_method: nil,
+  max_participants: nil, record: nil, region: nil,
+  coach: nil, trim: nil,
+  status_callback_event: nil, status_callback: nil, status_callback_method: nil,
+  recording_status_callback: nil, recording_status_callback_method: nil,
+  recording_status_callback_event: nil,
+  event_callback_url: nil, jitter_buffer_size: nil, participant_label: nil,
+  **keyword_args
+)
+```
+
+#### Queue
+
+```ruby
+dial.queue(
+  name,                        # positional — queue name
+  url: nil, method: nil,
+  reservation_sid: nil, post_work_activity_sid: nil,
+  **keyword_args
+)
+```
+
+#### Sip
+
+```ruby
+dial.sip(
+  sip_url: nil, username: nil, password: nil,
+  url: nil, method: nil,
+  status_callback_event: nil, status_callback: nil, status_callback_method: nil,
+  machine_detection: nil, machine_detection_timeout: nil,
+  **keyword_args
+) do |sip|
+  sip.uri(sip_url: 'sip:bob@sip.example.com', priority: 1, weight: 100)
+end
+```
+
+---
+
+## gather
+
+Collect keypad (DTMF) or speech input from the caller.
+
+```ruby
+def gather(
+  input: nil, action: nil, method: nil, timeout: nil,
+  speech_timeout: nil, max_speech_time: nil,
+  profanity_filter: nil, finish_on_key: nil, num_digits: nil,
+  partial_result_callback: nil, partial_result_callback_method: nil,
+  language: nil, hints: nil, barge_in: nil, debug: nil,
+  action_on_empty_result: nil, speech_model: nil, enhanced: nil,
+  **keyword_args
+)
+```
+
+```ruby
+response.gather(input: 'dtmf', action: '/handle-gather', num_digits: 1) do |gather|
+  gather.say(message: 'Press 1 for sales, 2 for support.')
+end
+```
+
+<ParamField path="body.input" type="string">
+  Type of input to accept: `dtmf`, `speech`, or `dtmf speech`. Defaults to `dtmf`.
+</ParamField>
+
+<ParamField path="body.action" type="string">
+  Webhook URL called with gathered input. Defaults to the current URL.
+</ParamField>
+
+<ParamField path="body.timeout" type="number">
+  Seconds to wait for input before giving up. Defaults to `5`.
+</ParamField>
+
+<ParamField path="body.num_digits" type="number">
+  Maximum number of DTMF digits to collect before calling `action`.
+</ParamField>
+
+<ParamField path="body.finish_on_key" type="string">
+  Key that ends DTMF collection. Defaults to `#`. Set to `''` to disable.
+</ParamField>
+
+<ParamField path="body.language" type="string">
+  BCP-47 language tag for speech recognition, for example `en-US`.
+</ParamField>
+
+<ParamField path="body.hints" type="string">
+  Comma-separated phrases to improve speech recognition accuracy.
+</ParamField>
+
+<ParamField path="body.speech_timeout" type="string">
+  Seconds to wait after speech ends before finalizing, or `auto`.
+</ParamField>
+
+<ParamField path="body.speech_model" type="string">
+  Speech recognition model: `default`, `numbers_and_commands`, `phone_call`, etc.
+</ParamField>
+
+<ParamField path="body.enhanced" type="boolean">
+  Use the enhanced (higher-accuracy, higher-cost) speech model.
+</ParamField>
+
+<ParamField path="body.action_on_empty_result" type="boolean">
+  Call `action` even when no input is received. Defaults to `false`.
+</ParamField>
+
+### Nested verbs
+
+`gather` supports `say`, `play`, and `pause` inside its block.
+
+```ruby
+response.gather(input: 'dtmf speech', timeout: 10) do |gather|
+  gather.play(url: 'https://example.com/prompt.mp3')
+  gather.pause(length: 1)
+  gather.say(message: 'Or just say your option.')
+end
+```
+
+---
+
+## record
+
+Record the caller's voice.
+
+```ruby
+def record(
+  action: nil, method: nil, timeout: nil, finish_on_key: nil,
+  max_length: nil, play_beep: nil, trim: nil,
+  recording_status_callback: nil, recording_status_callback_method: nil,
+  recording_status_callback_event: nil,
+  transcribe: nil, transcribe_callback: nil,
+  **keyword_args
+)
+```
+
+```ruby
+response.record(
+  action: '/handle-recording',
+  max_length: 120,
+  transcribe: true,
+  transcribe_callback: '/handle-transcription'
+)
+```
+
+<ParamField path="body.action" type="string">
+  Webhook URL called with the recording URL when recording ends.
+</ParamField>
+
+<ParamField path="body.timeout" type="number">
+  Seconds of silence that end the recording. Defaults to `5`.
+</ParamField>
+
+<ParamField path="body.max_length" type="number">
+  Maximum recording duration in seconds. Defaults to `3600`.
+</ParamField>
+
+<ParamField path="body.finish_on_key" type="string">
+  DTMF key that ends the recording. Defaults to `1234567890*#`.
+</ParamField>
+
+<ParamField path="body.play_beep" type="boolean">
+  Play a beep before recording starts. Defaults to `true`.
+</ParamField>
+
+<ParamField path="body.transcribe" type="boolean">
+  Transcribe the recording after it completes.
+</ParamField>
+
+<ParamField path="body.transcribe_callback" type="string">
+  Webhook URL called with the transcription text.
+</ParamField>
+
+<ParamField path="body.trim" type="string">
+  Whether to trim silence from the recording: `trim-silence` or `do-not-trim`.
+</ParamField>
+
+---
+
+## redirect
+
+Transfer control of the call to a different TwiML document.
+
+```ruby
+def redirect(url, method: nil, **keyword_args)
+```
+
+```ruby
+response.redirect('https://example.com/next-step', method: 'GET')
+```
+
+<ParamField path="body.url" type="string" required>
+  Absolute URL of the TwiML document to fetch.
+</ParamField>
+
+<ParamField path="body.method" type="string">
+  HTTP method used to fetch the URL. Defaults to `POST`.
+</ParamField>
+
+---
+
+## reject
+
+Reject an incoming call without billing your account.
+
+```ruby
+def reject(reason: nil, **keyword_args)
+```
+
+```ruby
+response.reject(reason: 'busy')
+```
+
+<ParamField path="body.reason" type="string">
+  Rejection tone played to the caller: `rejected` (default) or `busy`.
+</ParamField>
+
+<Warning>
+`reject` must be the first verb in the response — Twilio does not execute any subsequent verbs after a rejection.
+</Warning>
+
+---
+
+## pause
+
+Insert a silence gap in the call flow.
+
+```ruby
+def pause(length: nil, **keyword_args)
+```
+
+```ruby
+response.pause(length: 3)
+```
+
+<ParamField path="body.length" type="number">
+  Duration of the pause in seconds. Defaults to `1`.
+</ParamField>
+
+---
+
+## hangup
+
+End the call immediately.
+
+```ruby
+def hangup(**keyword_args)
+```
+
+```ruby
+response.hangup
+```
+
+<Note>
+`hangup` accepts no meaningful parameters. Any verbs added after it are ignored by Twilio.
+</Note>
+
+---
+
+## Complete example
+
+```ruby
+require 'twilio-ruby'
+
+response = Twilio::TwiML::VoiceResponse.new do |r|
+  r.gather(input: 'dtmf', num_digits: 1, action: '/ivr/handle-key') do |gather|
+    gather.say(message: 'Press 1 for sales. Press 2 for support.', loop: 3)
+  end
+  # Fallback if no input received
+  r.redirect('/ivr/welcome')
+end
+
+puts response.to_s
+```
+
+The above produces:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Gather action="/ivr/handle-key" input="dtmf" numDigits="1">
+    <Say loop="3">Press 1 for sales. Press 2 for support.</Say>
+  </Gather>
+  <Redirect>/ivr/welcome</Redirect>
+</Response>
+```
+
+<Tip>
+Ruby keyword arguments map to camelCase TwiML attributes automatically. For example, `num_digits:` becomes `numDigits` in the XML output.
+</Tip>

@@ -1,0 +1,180 @@
+---
+title: "Validate Twilio webhooks in Ruby"
+description: "Use Twilio::Security::RequestValidator and Rack middleware to verify that webhook requests genuinely come from Twilio, not third parties."
+---
+
+When Twilio calls your webhook URL — to deliver an incoming call, an SMS, or a status update — any party on the internet can send a forged POST request to the same URL. Without validation, your application could process fraudulent webhook data. Twilio prevents this by signing every request it sends using HMAC-SHA1: it computes a hash of the full URL and sorted POST parameters using your auth token as the key, then attaches the result as the `X-Twilio-Signature` HTTP header. The `twilio-ruby` library includes `Twilio::Security::RequestValidator` to verify this signature, and a Rack middleware that integrates the check into any Rack-compatible framework.
+
+## RequestValidator
+
+`Twilio::Security::RequestValidator` wraps the signature verification algorithm. Initialize it once with your auth token.
+
+```ruby
+require 'twilio-ruby'
+
+validator = Twilio::Security::RequestValidator.new(ENV['TWILIO_AUTH_TOKEN'])
+```
+
+If you have set `Twilio.auth_token` globally, the auth token argument is optional and will be read from the global configuration.
+
+### validate
+
+```ruby
+valid = validator.validate(url, params, signature)
+```
+
+| Argument | Type | Description |
+|---|---|---|
+| `url` | String | The full URL of your webhook endpoint, including query string |
+| `params` | Hash or String | POST parameters as a hash for form-encoded bodies; raw body string for JSON/non-form payloads |
+| `signature` | String | Value of the `X-Twilio-Signature` header |
+
+Returns `true` if the request is authentic, `false` otherwise.
+
+### How the signature is computed
+
+The validator reconstructs Twilio's signing algorithm:
+
+<Steps>
+  <Step title="Concatenate URL and sorted parameters">
+    The URL is appended with every POST parameter's key and value, sorted alphabetically by key.
+  </Step>
+  <Step title="Compute HMAC-SHA1">
+    An HMAC-SHA1 is computed over the resulting string using your auth token as the key.
+  </Step>
+  <Step title="Base64-encode and compare">
+    The result is base64-encoded and compared against the `X-Twilio-Signature` header using a constant-time comparison to prevent timing attacks.
+  </Step>
+</Steps>
+
+The validator also handles JSON and other non-form bodies. If the request URL contains a `bodySHA256` query parameter, the validator verifies a SHA-256 hash of the raw body instead of the POST parameters.
+
+### URL port handling
+
+Twilio's signature generation can be inconsistent about whether the URL includes an explicit port number. The validator handles this automatically by checking the signature against both the URL with and without the standard port:
+
+```ruby
+# Both of these succeed if Twilio signed with either form of the URL
+validator.validate('https://example.com/webhooks/sms', params, signature)
+validator.validate('https://example.com:443/webhooks/sms', params, signature)
+```
+
+<Warning>
+The URL you pass to `validate` must exactly match the URL Twilio called, including scheme, host, path, and query string. A common mistake is passing a URL that differs from what Twilio recorded — for example, omitting a trailing slash or changing the port — which causes valid requests to fail verification.
+</Warning>
+
+### Manual validation example
+
+```ruby
+require 'twilio-ruby'
+
+# In a Sinatra route handler:
+post '/webhooks/voice' do
+  validator  = Twilio::Security::RequestValidator.new(ENV['TWILIO_AUTH_TOKEN'])
+  url        = request.url
+  params     = request.POST
+  signature  = request.env['HTTP_X_TWILIO_SIGNATURE'] || ''
+
+  unless validator.validate(url, params, signature)
+    halt 403, 'Twilio Request Validation Failed'
+  end
+
+  # Process the validated webhook
+  response = Twilio::TwiML::VoiceResponse.new do |r|
+    r.say(message: 'Hello from a validated webhook.')
+  end
+
+  content_type 'text/xml'
+  response.to_s
+end
+```
+
+## Rack middleware
+
+For Rack-based applications, `Rack::TwilioWebhookAuthentication` automates validation for selected paths. The middleware intercepts matching requests, validates the Twilio signature, and either passes the request downstream or responds immediately with `403 Forbidden`.
+
+### Setup
+
+```ruby
+require 'rack'
+require 'twilio-ruby'
+
+use Rack::TwilioWebhookAuthentication, ENV['AUTH_TOKEN'], /\/webhooks/
+```
+
+The second argument after the auth token is a path pattern (or multiple patterns) as a `Regexp` or `String`. Only requests whose `PATH_INFO` matches the pattern are validated; all other paths are passed through without checking.
+
+### Rails integration
+
+In `config/application.rb` or an initializer:
+
+```ruby
+config.middleware.use Rack::TwilioWebhookAuthentication,
+                      ENV['TWILIO_AUTH_TOKEN'],
+                      /\/twilio/
+```
+
+### Sinatra integration
+
+```ruby
+require 'sinatra'
+require 'twilio-ruby'
+
+use Rack::TwilioWebhookAuthentication, ENV['TWILIO_AUTH_TOKEN'], '/sms', '/voice'
+
+post '/sms' do
+  # Only reached if the Twilio signature is valid
+  response = Twilio::TwiML::MessagingResponse.new do |r|
+    r.message(body: 'Validated!')
+  end
+  content_type 'text/xml'
+  response.to_s
+end
+```
+
+### Dynamic auth token lookup
+
+If you serve multiple Twilio accounts from one application, you can provide a block instead of a static auth token. The block receives the `AccountSid` from the POST body and should return the corresponding auth token:
+
+```ruby
+use Rack::TwilioWebhookAuthentication, nil, /\/webhooks/ do |account_sid|
+  MyApp.auth_token_for(account_sid)
+end
+```
+
+<Note>
+The middleware reads `request.POST` for `application/x-www-form-urlencoded` bodies. For other content types (e.g. JSON), it reads and rewinds the raw request body, which is then passed to `RequestValidator#validate` as a string for `bodySHA256` verification.
+</Note>
+
+### What the middleware returns on failure
+
+When validation fails, the middleware short-circuits the Rack stack and returns:
+
+```
+HTTP/1.1 403 Forbidden
+Content-Type: text/plain
+
+Twilio Request Validation Failed.
+```
+
+Your application code is never called in this case.
+
+## Testing with RequestValidator
+
+In unit tests you can generate a valid signature with `build_signature_for` to simulate a genuine Twilio request:
+
+```ruby
+require 'twilio-ruby'
+
+auth_token = 'test_auth_token'
+validator  = Twilio::Security::RequestValidator.new(auth_token)
+
+url    = 'https://example.com/webhooks/sms'
+params = { 'Body' => 'Hello', 'From' => '+14155551234' }
+
+# Generate a signature the way Twilio would
+signature = validator.build_signature_for(url, params)
+
+# Verify it round-trips correctly
+validator.validate(url, params, signature) # => true
+```

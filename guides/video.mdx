@@ -1,0 +1,144 @@
+---
+title: "Programmable Video with twilio-ruby"
+description: "Create and manage Twilio Programmable Video rooms, mint VideoGrant access tokens for participants, and list recordings using twilio-ruby."
+---
+
+Twilio Programmable Video lets you build real-time video and audio applications. Rooms are the server-side session containers; client-side participants connect using access tokens minted with `Twilio::JWT::AccessToken` and `Twilio::JWT::AccessToken::VideoGrant`. All room management calls go through `client.video.v1`.
+
+## Prerequisites
+
+```ruby
+require 'twilio-ruby'
+
+client = Twilio::REST::Client.new(
+  ENV['TWILIO_ACCOUNT_SID'],
+  ENV['TWILIO_AUTH_TOKEN']
+)
+```
+
+For token generation you also need a Twilio API Key:
+
+```ruby
+api_key_sid    = ENV['TWILIO_API_KEY_SID']
+api_key_secret = ENV['TWILIO_API_KEY_SECRET']
+account_sid    = ENV['TWILIO_ACCOUNT_SID']
+```
+
+## Create a Video room
+
+The default room type is `group`. Pass `unique_name` so clients can join by name rather than SID.
+
+```ruby
+room = client.video.v1.rooms.create(
+  unique_name: 'daily-standup',
+  type:        'group'
+)
+
+puts room.sid         # RM...
+puts room.unique_name # daily-standup
+puts room.status      # in-progress
+```
+
+Create a peer-to-peer room (suitable for 1:1 calls):
+
+```ruby
+room = client.video.v1.rooms.create(
+  unique_name: 'one-on-one-call',
+  type:        'peer-to-peer'
+)
+```
+
+## Fetch a room by SID or unique name
+
+Both the SID and the `unique_name` can be used to address the room:
+
+```ruby
+# By SID
+room = client.video.v1.rooms('RMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').fetch
+puts room.status
+
+# By unique name
+room = client.video.v1.rooms('daily-standup').fetch
+puts room.sid
+```
+
+## Generate a VideoGrant access token
+
+Clients (browsers, iOS, Android) require a short-lived JWT to join a room. Use `Twilio::JWT::AccessToken` with a `VideoGrant`:
+
+```ruby
+grant = Twilio::JWT::AccessToken::VideoGrant.new
+grant.room = 'daily-standup'
+
+token = Twilio::JWT::AccessToken.new(
+  account_sid,
+  api_key_sid,
+  api_key_secret,
+  [grant],
+  identity: 'alice'
+)
+
+puts token.to_jwt
+```
+
+<Note>
+  The `identity` value identifies the participant in the room. It must be unique per participant within a room session.
+</Note>
+
+<Warning>
+  Access tokens expire. The default TTL is 3600 seconds (1 hour). Mint a fresh token before it expires if participants need longer sessions.
+</Warning>
+
+You can set a custom TTL:
+
+```ruby
+token = Twilio::JWT::AccessToken.new(
+  account_sid,
+  api_key_sid,
+  api_key_secret,
+  [grant],
+  identity: 'alice',
+  ttl:      7200
+)
+```
+
+## List rooms and filter by status
+
+`client.video.v1.rooms.list` supports `status` and `unique_name` filters:
+
+```ruby
+# All in-progress rooms
+client.video.v1.rooms.list(status: 'in-progress').each do |r|
+  puts "#{r.sid} #{r.unique_name}"
+end
+
+# Completed rooms
+client.video.v1.rooms.list(status: 'completed', limit: 20).each do |r|
+  puts r.duration
+end
+```
+
+## Complete a room
+
+Updating a room's status to `completed` ends the session and disconnects all participants:
+
+```ruby
+client.video.v1.rooms('RMxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx').update(
+  status: 'completed'
+)
+```
+
+<Tip>
+  Completing a room is the clean way to end a session server-side. Participants who are still connected receive a disconnect event in the client SDK.
+</Tip>
+
+## Error handling
+
+```ruby
+begin
+  client.video.v1.rooms('nonexistent-room').fetch
+rescue Twilio::REST::RestError => e
+  puts e.message
+  puts e.code   # 20404 for not found
+end
+```
